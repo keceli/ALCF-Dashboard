@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ALCF Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>ALCF Dashboard</h1>
+      <p class="subtitle">Jobs, projects and quotas on Aurora, Polaris and Crux</p>
+    </div>
+    <div class="meta">
+      <div id="meta-user"></div>
+      <div id="meta-updated"></div>
+      <button id="reload" type="button">Reload</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main>
+    <section id="summary" class="cards" aria-label="Summary"></section>
+
+    <section>
+      <h2>Systems</h2>
+      <div id="systems" class="cards"></div>
+      <div id="incidents"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Jobs</h2>
+        <div class="filters">
+          <label>Machine <select id="filter-machine"><option value="">All</option></select></label>
+          <label>State <select id="filter-state"><option value="">All</option></select></label>
+          <input id="filter-text" type="search" placeholder="Filter by id, name, project, queue…">
+        </div>
+      </div>
+      <div class="table-wrap"><table id="jobs"></table></div>
+    </section>
+
+    <section>
+      <h2>Projects &amp; allocations</h2>
+      <div id="projects"></div>
+    </section>
+
+    <section>
+      <h2>Storage quotas</h2>
+      <div class="table-wrap"><table id="quotas"></table></div>
+    </section>
+
+    <section>
+      <h2>Data sources</h2>
+      <div class="table-wrap"><table id="sources"></table></div>
+    </section>
+  </main>
+
+  <footer>
+    Data collected with <code>collector/alcf_dashboard.py</code> from the
+    <a href="https://docs.alcf.anl.gov/services/iri-api/">ALCF IRI API</a> and over SSH.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

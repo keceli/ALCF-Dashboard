@@ -1,0 +1,306 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-10-30T21:00:00+00:00",
+ "user": "demo_user",
+ "sources": {
+  "iri": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-30T21:00:00+00:00",
+   "last_success": "2026-10-30T21:00:00+00:00",
+   "url": "https://api.alcf.anl.gov/api/v1"
+  },
+  "ssh:aurora": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-30T21:00:00+00:00",
+   "last_success": "2026-10-30T21:00:00+00:00"
+  },
+  "ssh:polaris": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-30T21:00:00+00:00",
+   "last_success": "2026-10-30T21:00:00+00:00"
+  },
+  "ssh:crux": {
+   "ok": false,
+   "errors": [],
+   "collected_at": "2026-10-30T21:00:00+00:00",
+   "last_success": null,
+   "error": "ssh crux.alcf.anl.gov exited with 255: Permission denied (sample)"
+  }
+ },
+ "resources": [
+  {
+   "id": "r-aurora",
+   "name": "aurora",
+   "description": null,
+   "status": "up",
+   "type": "compute",
+   "group": null,
+   "endpoints": [
+    "compute"
+   ],
+   "source": "iri"
+  },
+  {
+   "id": "r-polaris",
+   "name": "Polaris",
+   "description": null,
+   "status": "degraded",
+   "type": null,
+   "group": null,
+   "endpoints": [
+    "compute"
+   ],
+   "source": "iri"
+  },
+  {
+   "id": "r-eagle",
+   "name": "eagle",
+   "description": null,
+   "status": "up",
+   "type": null,
+   "group": null,
+   "endpoints": [
+    "filesystem"
+   ],
+   "source": "iri"
+  },
+  {
+   "id": "r-crux",
+   "name": "crux",
+   "description": null,
+   "status": "up",
+   "type": null,
+   "group": null,
+   "endpoints": [
+    "compute"
+   ],
+   "source": "iri"
+  }
+ ],
+ "incidents": [
+  {
+   "id": "i1",
+   "name": "Polaris scheduled maintenance (sample)",
+   "description": null,
+   "status": "down",
+   "type": "planned",
+   "resolution": "pending",
+   "start": "2026-10-30T00:00:00Z",
+   "end": null,
+   "resources": [],
+   "source": "iri"
+  }
+ ],
+ "jobs": [
+  {
+   "machine": "aurora",
+   "id": "123456",
+   "name": "train",
+   "state": "active",
+   "message": null,
+   "queue": "prod",
+   "project": "DemoAI",
+   "nodes": 128,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": "2026-10-30T19:53:20+00:00",
+   "exit_code": null,
+   "source": "iri"
+  },
+  {
+   "machine": "polaris",
+   "id": "5501234",
+   "name": "sweep_lr",
+   "state": "queued",
+   "message": "Waiting for maintenance to end",
+   "queue": "prod",
+   "project": "DemoAI",
+   "nodes": 10,
+   "walltime_s": 7200,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": null,
+   "source": "iri"
+  },
+  {
+   "machine": "aurora",
+   "id": "123456",
+   "name": "train",
+   "state": "active",
+   "message": null,
+   "queue": "prod",
+   "project": "DemoAI",
+   "nodes": 128,
+   "walltime_s": 21600,
+   "used_walltime_s": 5400,
+   "submitted": "2026-10-29T10:00:00",
+   "started": "2026-10-29T11:00:00",
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": null,
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "id": "123457",
+   "name": "eval",
+   "state": "queued",
+   "message": "Not Running: Insufficient amount of resource: ncpus",
+   "queue": "debug",
+   "project": "DemoSim",
+   "nodes": 2,
+   "walltime_s": 3600,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": "2026-10-30T09:15:00",
+   "updated": null,
+   "exit_code": null,
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "id": "123400",
+   "name": "old",
+   "state": "failed",
+   "message": null,
+   "queue": null,
+   "project": null,
+   "nodes": null,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": 1,
+   "source": "ssh:aurora"
+  }
+ ],
+ "projects": [
+  {
+   "id": "DemoAI",
+   "name": "DemoAI",
+   "description": "Example AI-for-science project (sample data)",
+   "allocations": [
+    {
+     "id": "a1",
+     "capability": "Aurora",
+     "unit": "node_hours",
+     "allocation": 200000,
+     "usage": 61234.5,
+     "user_allocation": 0,
+     "user_usage": 8123
+    },
+    {
+     "id": "a2",
+     "capability": "Polaris",
+     "unit": "node_hours",
+     "allocation": 50000,
+     "usage": 46100,
+     "user_allocation": 0,
+     "user_usage": 12000
+    },
+    {
+     "id": "a3",
+     "capability": "Flare",
+     "unit": "bytes",
+     "allocation": 109951162777600,
+     "usage": 46179488366592,
+     "user_allocation": 0,
+     "user_usage": 5497558138880
+    }
+   ],
+   "source": "iri"
+  },
+  {
+   "id": "DemoSim",
+   "name": "DemoSim",
+   "description": "Example simulation project (sample data)",
+   "allocations": [
+    {
+     "id": "b1",
+     "capability": "Aurora",
+     "unit": "node_hours",
+     "allocation": 20000,
+     "usage": 3000,
+     "user_allocation": 0,
+     "user_usage": 900
+    },
+    {
+     "id": "b2",
+     "capability": "Eagle",
+     "unit": "bytes",
+     "allocation": 54975581388800,
+     "usage": 51677046505472,
+     "user_allocation": 0,
+     "user_usage": 1099511627776
+    }
+   ],
+   "source": "iri"
+  }
+ ],
+ "quotas": [
+  {
+   "machine": "aurora",
+   "scope": "user",
+   "name": "demo_user",
+   "type": "User",
+   "filesystem": "/home",
+   "used": "7.45G",
+   "quota": "50.00G",
+   "used_bytes": 7999376589,
+   "quota_bytes": 53687091200,
+   "grace": "none",
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "scope": "project",
+   "name": "DemoAI",
+   "type": "Project",
+   "filesystem": "flare",
+   "used": "1.5T",
+   "quota": "10T",
+   "used_bytes": 1649267441664,
+   "quota_bytes": 10995116277760,
+   "grace": "none",
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "scope": "project",
+   "name": "DemoAI",
+   "type": "Project",
+   "filesystem": "eagle",
+   "used": "8k",
+   "quota": "1T",
+   "used_bytes": 8192,
+   "quota_bytes": 1099511627776,
+   "grace": "none",
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "polaris",
+   "scope": "user",
+   "name": "demo_user",
+   "type": "User",
+   "filesystem": "/home",
+   "used": "46.2G",
+   "quota": "50.00G",
+   "used_bytes": 49606872269,
+   "quota_bytes": 53687091200,
+   "grace": "none",
+   "source": "ssh:polaris"
+  }
+ ]
+}
