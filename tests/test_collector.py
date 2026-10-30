@@ -97,13 +97,13 @@ class SSHParsingTests(unittest.TestCase):
         self.assertEqual(running["walltime_s"], 21600)
         self.assertEqual(running["used_walltime_s"], 5400)
         self.assertEqual(running["project"], "MyProject")
-        self.assertEqual(running["started"], "2026-10-29T11:00:00")
+        self.assertEqual(running["started"], "2026-10-29T11:00:00+00:00")
         self.assertEqual(running["source"], "ssh:aurora")
         queued = jobs["123457"]
         self.assertEqual(queued["state"], "queued")
         self.assertEqual(queued["project"], "OtherProject")
         self.assertEqual(queued["nodes"], 2)
-        self.assertEqual(queued["estimated_start"], "2026-10-30T09:15:00")
+        self.assertEqual(queued["estimated_start"], "2026-10-30T09:15:00+00:00")
         self.assertEqual(jobs["123400"]["state"], "failed")
 
     def test_parse_qstat_empty(self):

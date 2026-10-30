@@ -46,10 +46,10 @@ jobs:
         env:
           ALCF_IRI_TOKEN: ${{ secrets.ALCF_IRI_TOKEN }}
           ALCF_IRI_URL: ${{ vars.ALCF_IRI_URL }}
-        if: env.ALCF_IRI_TOKEN != ''
         # SSH needs MFA, so only the IRI API is queried here. SSH data committed
         # in docs/data/dashboard.json is preserved via --merge.
         run: |
+          if [ -z "$ALCF_IRI_TOKEN" ]; then echo "ALCF_IRI_TOKEN secret not set; skipping"; exit 0; fi
           [ -n "$ALCF_IRI_URL" ] || unset ALCF_IRI_URL
           python collector/alcf_dashboard.py --no-ssh \
             --merge docs/data/dashboard.json -o docs/data/dashboard.json

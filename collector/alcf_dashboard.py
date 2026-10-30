@@ -85,13 +85,17 @@ def parse_duration(text):
 
 
 def parse_pbs_time(text):
-    """Convert a PBS timestamp (``Thu Oct 30 12:00:00 2026`` or epoch) to ISO 8601."""
+    """Convert a PBS timestamp (``Thu Oct 30 12:00:00 2026`` or epoch) to ISO 8601.
+
+    :data:`SSH_SCRIPT` runs ``qstat`` with ``TZ=UTC`` so textual times are UTC.
+    """
     if text in (None, ""):
         return None
     if isinstance(text, (int, float)) or str(text).isdigit():
         return _dt.datetime.fromtimestamp(int(text), _dt.timezone.utc).isoformat()
     try:
-        return _dt.datetime.strptime(" ".join(str(text).split()), "%a %b %d %H:%M:%S %Y").isoformat()
+        parsed = _dt.datetime.strptime(" ".join(str(text).split()), "%a %b %d %H:%M:%S %Y")
+        return parsed.replace(tzinfo=_dt.timezone.utc).isoformat()
     except ValueError:
         return str(text)
 
@@ -364,7 +368,7 @@ echo "@@SECTION whoami"
 id -un
 echo "@@SECTION jobs"
 ids=$(qselect -u "$(id -un)" 2>/dev/null | tr '\n' ' ')
-if [ -n "$ids" ]; then qstat -f -F json $ids 2>/dev/null; else echo '{"Jobs":{}}'; fi
+if [ -n "$ids" ]; then TZ=UTC qstat -f -F json $ids 2>/dev/null; else echo '{"Jobs":{}}'; fi
 echo "@@SECTION myquota"
 command -v myquota >/dev/null 2>&1 && myquota 2>&1
 echo "@@SECTION myprojectquotas"
