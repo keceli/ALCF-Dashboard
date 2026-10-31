@@ -1,0 +1,118 @@
+:root {
+  --bg: #f5f7fa;
+  --card: #fff;
+  --text: #1d2733;
+  --muted: #5d6b7a;
+  --border: #dde3ea;
+  --accent: #00539b;
+  --ok: #1e8e3e;
+  --warn: #c77700;
+  --bad: #c5221f;
+  --info: #1967d2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161c;
+    --card: #1a2129;
+    --text: #e3e8ee;
+    --muted: #9aa7b4;
+    --border: #2c3640;
+    --accent: #6ab0ff;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: var(--accent);
+  color: #fff;
+}
+@media (prefers-color-scheme: dark) { header { color: #0b1015; } }
+header h1 { margin: 0; font-size: 1.5rem; }
+.subtitle { margin: 0; opacity: .85; }
+.meta { text-align: right; font-size: .9rem; }
+.meta button { margin-top: .3rem; }
+
+main { padding: 1rem 1.5rem; max-width: 1400px; margin: 0 auto; }
+section { margin-bottom: 2rem; }
+h2 { font-size: 1.15rem; margin: 0 0 .75rem; }
+h3 { font-size: 1rem; margin: 0 0 .5rem; }
+
+.banner { padding: .6rem 1.5rem; background: #fff4e5; color: #663c00; border-bottom: 1px solid #f0c36d; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .75rem 1rem;
+}
+.card .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+.card .value { font-size: 1.6rem; font-weight: 600; }
+.card .detail { color: var(--muted); font-size: .85rem; }
+
+.section-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: .5rem; }
+.filters { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: .5rem; }
+.filters input { min-width: 260px; }
+select, input, button {
+  font: inherit;
+  padding: .25rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--text);
+}
+button { cursor: pointer; }
+
+.table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+tr:last-child td { border-bottom: none; }
+td.wrap { white-space: normal; min-width: 200px; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); padding: .75rem; }
+
+.badge {
+  display: inline-block;
+  padding: .05rem .5rem;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--muted);
+}
+.badge.up, .badge.active, .badge.ok, .badge.completed { background: var(--ok); }
+.badge.queued, .badge.new { background: var(--info); }
+.badge.held, .badge.degraded, .badge.warn { background: var(--warn); }
+.badge.down, .badge.failed, .badge.canceled, .badge.bad { background: var(--bad); }
+
+.bar { position: relative; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; min-width: 120px; }
+.bar > span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ok); }
+.bar.warn > span { background: var(--warn); }
+.bar.bad > span { background: var(--bad); }
+.bar > span.user { background: var(--info); opacity: .85; }
+
+.project { margin-bottom: 1rem; }
+.project .desc { color: var(--muted); margin: -.25rem 0 .5rem; }
+
+.incident { border-left: 4px solid var(--warn); background: var(--card); padding: .5rem .75rem; margin-top: .75rem; border-radius: 4px; }
+.incident.down { border-left-color: var(--bad); }
+
+.muted { color: var(--muted); }
+footer { padding: 1rem 1.5rem 2rem; color: var(--muted); text-align: center; font-size: .85rem; }
+a { color: var(--accent); }
