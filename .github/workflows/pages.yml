@@ -5,8 +5,10 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # Refresh IRI data every 30 minutes (only if the ALCF_IRI_TOKEN secret is set).
+    # Refresh the public system status, plus projects and jobs if the
+    # ALCF_IRI_TOKEN secret is set, every 30 minutes.
     - cron: "*/30 * * * *"
+  # Also started by scripts/update_dashboard.sh --push.
   workflow_dispatch:
 
 permissions:
@@ -14,7 +16,8 @@ permissions:
 
 concurrency:
   group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  # Let Pages deployments finish; only superseded pull request runs are cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -42,14 +45,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Fetch the latest snapshot
+        # Pushed by scripts/update_dashboard.sh --push; absent until its first push.
+        run: |
+          if git fetch --quiet --depth=1 origin dashboard-data; then
+            git show FETCH_HEAD:dashboard.json > docs/data/dashboard.json
+          else
+            echo "No dashboard-data branch yet"
+          fi
       - name: Refresh IRI API data
         env:
           ALCF_IRI_TOKEN: ${{ secrets.ALCF_IRI_TOKEN }}
           ALCF_IRI_URL: ${{ vars.ALCF_IRI_URL }}
-        # SSH needs MFA, so only the IRI API is queried here. SSH data committed
-        # in docs/data/dashboard.json is preserved via --merge.
+        # SSH needs MFA, so only the IRI API is queried here (without a token,
+        # just the public system status); --merge keeps everything else.
         run: |
-          if [ -z "$ALCF_IRI_TOKEN" ]; then echo "ALCF_IRI_TOKEN secret not set; skipping"; exit 0; fi
           [ -n "$ALCF_IRI_URL" ] || unset ALCF_IRI_URL
           python collector/alcf_dashboard.py --no-ssh \
             --merge docs/data/dashboard.json -o docs/data/dashboard.json

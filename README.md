@@ -12,28 +12,31 @@ collector/alcf_dashboard.py  ──►  docs/data/dashboard.json  ──►  doc
 ```
 
 GitHub Pages only serves static files and cannot reach ALCF itself, so a small
-collector (Python 3, standard library only) writes a JSON snapshot that the page
-renders. If `docs/data/dashboard.json` does not exist, the page shows
+collector (Python 3.6+, standard library only, so it also runs with the login
+nodes' `/usr/bin/python3`) writes a JSON snapshot that the page renders. If
+`docs/data/dashboard.json` does not exist, the page shows
 `docs/data/sample.json` with a "sample data" banner.
 
 ## What is collected
 
 | Data | IRI API ([docs](https://docs.alcf.anl.gov/services/iri-api/)) | SSH |
 |---|---|---|
-| System status & incidents | `GET /status/resources`, `GET /status/incidents` | – |
-| Jobs | `POST /compute/status/{resource}` | `qselect -u $USER` + `qstat -f -F json` |
+| System status & incidents | `GET /status/resources`, `GET /status/incidents` (public, no token needed) | – |
+| Jobs | `POST /compute/status/{resource}`, filtered to your jobs | `qselect -u $USER` + `qstat -f -F json` |
 | Projects & allocations (node-hours) | `GET /account/projects`, `.../project_allocations`, `.../user_allocations` | – |
 | Storage quotas | storage (bytes/inodes) project allocations | `myquota`, `myprojectquotas` |
 
-Every source is optional and failures are isolated: the dashboard's *Data
-sources* table shows what succeeded, when, and any errors. Jobs reported by both
-the IRI API and `qstat` are merged into a single row.
+Every source is optional and failures are isolated: when a source fails (an
+expired token, an SSH host without an open connection, ...) the dashboard keeps
+its last good data and says so in a banner and in the *Data sources* table.
+Jobs reported by both the IRI API and `qstat` are merged into a single row.
 
 ## Usage
 
 ### 1. IRI API token
 
-Get a token with [`alcf-tokens`](https://github.com/argonne-lcf/alcf-tokens):
+Get a token with [`alcf-tokens`](https://github.com/argonne-lcf/alcf-tokens)
+(needs Python 3.10+):
 
 ```bash
 pip install alcf-tokens        # or: uvx alcf-tokens ...
@@ -42,9 +45,11 @@ export ALCF_IRI_TOKEN=$(alcf-tokens get-token iri)
 ```
 
 If `ALCF_IRI_TOKEN` is not set but `alcf-tokens` is on your `PATH`, the
-collector calls `alcf-tokens get-token iri` itself (`--token-command` overrides
-this). The API base URL defaults to `https://api.alcf.anl.gov/api/v1`; change it
-with `--iri-url` or `ALCF_IRI_URL`.
+collector calls `alcf-tokens get-token iri` itself, which also renews the token
+(run `alcf-tokens login iri` again after 7 days); `--token-command` overrides
+this. Without a token only the public system status is collected. The API base
+URL defaults to `https://api.alcf.anl.gov/api/v2`; change it with `--iri-url` or
+`ALCF_IRI_URL`.
 
 ### 2. SSH (optional)
 
@@ -60,39 +65,62 @@ Host aurora.alcf.anl.gov polaris.alcf.anl.gov crux.alcf.anl.gov
 ```
 
 then authenticate once per machine with `ssh -fN aurora.alcf.anl.gov` (etc.).
-Use `--ssh-host aurora=myalias` to point at a different host alias,
-`--ssh-user` to set the user, `--machines aurora,polaris` to limit machines and
-`--no-ssh` to disable SSH entirely.
+`ControlPersist` has to outlast the time between updates. If your SSH config
+uses short aliases (`Host aurora`), pass `--ssh-host aurora=aurora` (etc.) so
+that their connections are reused. Use `--ssh-user` to set the user,
+`--machines aurora,polaris` to limit machines and `--no-ssh` to disable SSH
+entirely.
 
 ### 3. Collect and publish
 
 ```bash
-python3 collector/alcf_dashboard.py            # writes docs/data/dashboard.json
-python3 -m http.server -d docs 8000            # preview at http://localhost:8000
-git add docs/data/dashboard.json && git commit -m "Update dashboard" && git push
+scripts/update_dashboard.sh                # writes docs/data/dashboard.json
+python3 -m http.server -d docs 8000        # preview at http://localhost:8000
+scripts/update_dashboard.sh --push         # collect and publish
 ```
 
-Run it periodically (e.g. from `cron` on your workstation or an ALCF login node)
-to keep the dashboard fresh. `--merge docs/data/dashboard.json` keeps data from
-sources that were not refreshed by the current run.
+Collector options go after `--`, e.g.
+`scripts/update_dashboard.sh --push -- --ssh-host aurora=aurora --machines aurora,crux`.
+Each run is merged with the previous snapshot, so a source that fails keeps its
+last good data. `--push` force-pushes the snapshot as the only commit of the
+`dashboard-data` branch, so history does not grow and your checkout is never
+touched. If `gh` is installed and logged in, it then starts the deploy
+workflow; otherwise the next scheduled run deploys the snapshot.
+
+To update periodically, run it from cron, e.g. every 30 minutes:
+
+```
+PATH=/home/<you>/.local/bin:/usr/local/bin:/usr/bin:/bin
+*/30 * * * * /path/to/ALCF-Dashboard/scripts/update_dashboard.sh --push >> /home/<you>/alcf-dashboard.log 2>&1
+```
+
+or keep it running in a terminal or tmux with
+`scripts/update_dashboard.sh --push --every 1800`. Cron has a minimal `PATH`
+and no SSH agent: make sure `python3`, `git`, `gh` and `alcf-tokens` are found
+and that `git push` to GitHub works without a prompt. A run is skipped while
+the previous one is still going.
 
 ### 4. GitHub Pages
 
 In the repository settings, set **Pages → Build and deployment → Source** to
 **GitHub Actions**. The [`Dashboard`](.github/workflows/pages.yml) workflow runs
-the tests and deploys `docs/` on every push to `main`.
+the tests and deploys `docs/` with the latest snapshot from the
+`dashboard-data` branch on every push to `main`, when
+`scripts/update_dashboard.sh --push` asks for it, and every 30 minutes.
 
-Optionally add an `ALCF_IRI_TOKEN` repository secret (and an `ALCF_IRI_URL`
-variable to override the API URL): the workflow then refreshes the IRI data
-every 30 minutes and on each deploy, preserving the SSH data committed in
-`docs/data/dashboard.json`. Note that IRI tokens expire (about 48 hours), so the
-secret must be renewed; SSH cannot run in Actions because of MFA.
+Before deploying, the workflow refreshes the public system status. If an
+`ALCF_IRI_TOKEN` repository secret is set (and optionally an `ALCF_IRI_URL`
+variable), it also refreshes projects and IRI jobs, keeping the snapshot's SSH
+data. IRI access tokens expire after 48 hours; once the secret has expired, the
+dashboard keeps the last good data and shows a warning. SSH cannot run in
+Actions because of MFA.
 
-> **Privacy:** GitHub Pages sites are public unless your plan supports private
-> Pages. The snapshot contains your username, project names, job names and
-> quota usage. Use a private repository with private Pages, or keep the data
-> local (`python3 -m http.server -d docs`) if that is a concern. Tokens are
-> never written to the snapshot.
+> **Privacy:** A GitHub Pages site of a personal account is public (access
+> control needs GitHub Enterprise Cloud), and so is everything pushed to a
+> public repository, including the `dashboard-data` branch. The snapshot
+> contains your username, project names, job names and quota usage. If that is
+> a concern, keep the data local (`python3 -m http.server -d docs`) and do not
+> use `--push`. Tokens are never written to the snapshot.
 
 ## Development
 

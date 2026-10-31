@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 *.tmp
 .venv/
+# Local snapshot, published on the dashboard-data branch by scripts/update_dashboard.sh --push.
+docs/data/dashboard.json
