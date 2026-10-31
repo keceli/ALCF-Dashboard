@@ -1,0 +1,451 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-10-31T08:17:33+00:00",
+ "user": "keceli",
+ "sources": {
+  "ssh:aurora": {
+   "ok": false,
+   "errors": [
+    "ssh aurora.alcf.anl.gov exited with 255: keceli@aurora.alcf.anl.gov: Permission denied (keyboard-interactive,hostbased)."
+   ],
+   "collected_at": "2026-10-31T08:17:36+00:00",
+   "last_success": "2026-10-31T04:38:09+00:00"
+  },
+  "ssh:polaris": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-31T08:17:43+00:00",
+   "last_success": "2026-10-31T08:17:43+00:00"
+  },
+  "ssh:crux": {
+   "ok": false,
+   "errors": [
+    "ssh crux.alcf.anl.gov exited with 255: keceli@crux.alcf.anl.gov: Permission denied (keyboard-interactive,hostbased)."
+   ],
+   "collected_at": "2026-10-31T08:17:47+00:00",
+   "last_success": "2026-10-31T04:38:25+00:00"
+  },
+  "iri:status": {
+   "url": "https://api.alcf.anl.gov/api/v2",
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-31T08:22:04+00:00",
+   "last_success": "2026-10-31T08:22:04+00:00"
+  },
+  "iri:account": {
+   "url": "https://api.alcf.anl.gov/api/v2",
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-31T08:22:04+00:00",
+   "last_success": "2026-10-31T08:22:04+00:00"
+  },
+  "iri:jobs": {
+   "url": "https://api.alcf.anl.gov/api/v2",
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-31T08:22:04+00:00",
+   "last_success": "2026-10-31T08:22:04+00:00"
+  }
+ },
+ "resources": [
+  {
+   "id": "2fef6c82-a982-491e-91a3-d75b59b707af",
+   "name": "Sirius",
+   "description": "Sirius is an ALCF staging cluster.",
+   "status": "unknown",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "6115bd2c-957a-4543-abff-5fae52992ff2",
+   "name": "Home",
+   "description": "Home is a Lustre filesystem for small files.",
+   "status": "unknown",
+   "type": "storage",
+   "group": "storages",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "9674c7e1-aecc-4dbb-bf01-c9197e027cd6",
+   "name": "Sophia",
+   "description": "Sophia is an AMD+NVIDIA GPU-based system with 24 nodes and 8 A100 GPUs per node.",
+   "status": "up",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "8b9b42f7-572a-4909-8472-a0453436304c",
+   "name": "Crux",
+   "description": "Crux is an AMD CPU-only system with 256 nodes.",
+   "status": "up",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "0325fc07-6fb7-4453-b772-3d5030b2df72",
+   "name": "Aurora",
+   "description": "Aurora is an HPE Cray-Ex based system with 10,624 nodes and 6 Intel Data Center GPU Max Series per node.",
+   "status": "up",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "7f7d0593-162e-43b9-8476-07d7d137d6ab",
+   "name": "Edith",
+   "description": "Edit is an ALCF development cluster with 4 nodes",
+   "status": "unknown",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "72bbd8c7-b511-4dc3-84b5-c4fddc297504",
+   "name": "Inference Service",
+   "description": "The ALCF Inference Service provides API access to a variety of state-of-the-art open-source models running on dedicated ALCF hardware. Documentation: https://docs.alcf.anl.gov/services/inference-endpoints/",
+   "status": "up",
+   "type": "generic",
+   "group": "services",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "154bb3be-5d12-4a76-a16b-898b8e310a4b",
+   "name": "Flare",
+   "description": "Flare is a 91 PB Lustre Filesystem with 160 OSTs, 40 MDTs, and 48 Gateway nodes mounted at /lus/flare/projects/ with a peak theoretical performance of 650 GB/s.",
+   "status": "unknown",
+   "type": "storage",
+   "group": "storages",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "55c1c993-1124-47f9-b823-514ba3849a9a",
+   "name": "Polaris",
+   "description": "Polaris is an AMD+NVIDIA GPU-based system with 560 nodes and 4 A100 GPUs per node.",
+   "status": "up",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "1c3ad9d4-2e91-42bc-becb-72b1fde1235c",
+   "name": "Eagle",
+   "description": "Eagle is a Lustre filesystem for intensive job output, large files, and community sharing via Globus.",
+   "status": "unknown",
+   "type": "storage",
+   "group": "storages",
+   "endpoints": [],
+   "source": "iri:status"
+  }
+ ],
+ "incidents": [],
+ "jobs": [
+  {
+   "machine": "aurora",
+   "id": "8992020",
+   "name": null,
+   "state": "queued",
+   "message": null,
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": null,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": 0,
+   "source": "iri:jobs"
+  },
+  {
+   "machine": "aurora",
+   "id": "8997012",
+   "name": null,
+   "state": "queued",
+   "message": null,
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": null,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": 0,
+   "source": "iri:jobs"
+  },
+  {
+   "machine": "aurora",
+   "id": "8997256",
+   "name": null,
+   "state": "active",
+   "message": null,
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": null,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": 0,
+   "source": "iri:jobs"
+  },
+  {
+   "machine": "aurora",
+   "id": "9001500",
+   "name": null,
+   "state": "held",
+   "message": null,
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": null,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": 0,
+   "source": "iri:jobs"
+  }
+ ],
+ "projects": [
+  {
+   "id": "1b080f7d-c9e3-370d-9eca-7ca04cca92f8",
+   "name": "MLP4THERMO",
+   "description": "N/A",
+   "allocations": [
+    {
+     "id": "17285",
+     "capability": "aurora",
+     "unit": "node_hours",
+     "allocation": 35000.0,
+     "usage": 5611.41,
+     "user_allocation": 35000.0,
+     "user_usage": 5611.41
+    },
+    {
+     "id": "17286",
+     "capability": "crux",
+     "unit": "node_hours",
+     "allocation": 5000.0,
+     "usage": 0.0,
+     "user_allocation": 5000.0,
+     "user_usage": 0.0
+    },
+    {
+     "id": "17287",
+     "capability": "polaris",
+     "unit": "node_hours",
+     "allocation": 5000.0,
+     "usage": 2373.5730555555556,
+     "user_allocation": 5000.0,
+     "user_usage": 2373.5730555555556
+    }
+   ],
+   "source": "iri:account"
+  },
+  {
+   "id": "a8f58f90-7f38-3192-8bc4-514f9630faa8",
+   "name": "IQC",
+   "description": "N/A",
+   "allocations": [
+    {
+     "id": "17009",
+     "capability": "aurora",
+     "unit": "node_hours",
+     "allocation": 40000.0,
+     "usage": 0.009166666663077194,
+     "user_allocation": 40000.0,
+     "user_usage": 0.009166666663077194
+    },
+    {
+     "id": "17010",
+     "capability": "crux",
+     "unit": "node_hours",
+     "allocation": 20000.0,
+     "usage": 11162.997777777779,
+     "user_allocation": 20000.0,
+     "user_usage": 11162.997777777779
+    },
+    {
+     "id": "17011",
+     "capability": "polaris",
+     "unit": "node_hours",
+     "allocation": 5000.0,
+     "usage": 6230.008055555556,
+     "user_allocation": 5000.0,
+     "user_usage": 6230.008055555556
+    }
+   ],
+   "source": "iri:account"
+  },
+  {
+   "id": "79d81c4e-c5f6-3ba1-85e8-07a557a61908",
+   "name": "HiFiThermKin",
+   "description": "N/A",
+   "allocations": [
+    {
+     "id": "15490",
+     "capability": "aurora",
+     "unit": "node_hours",
+     "allocation": 1200000.0,
+     "usage": 828274.76,
+     "user_allocation": 1200000.0,
+     "user_usage": 828274.76
+    }
+   ],
+   "source": "iri:account"
+  },
+  {
+   "id": "b036a87b-48b6-3b8e-b6ad-8f7bb1092287",
+   "name": "ChemGraph",
+   "description": "N/A",
+   "allocations": [
+    {
+     "id": "17185",
+     "capability": "sophia",
+     "unit": "node_hours",
+     "allocation": 1000.0,
+     "usage": 0.0,
+     "user_allocation": 1000.0,
+     "user_usage": 0.0
+    },
+    {
+     "id": "17484",
+     "capability": "aurora",
+     "unit": "node_hours",
+     "allocation": 30000.0,
+     "usage": 0.0,
+     "user_allocation": 30000.0,
+     "user_usage": 0.0
+    },
+    {
+     "id": "17485",
+     "capability": "polaris",
+     "unit": "node_hours",
+     "allocation": 5000.0,
+     "usage": 1068.5541666666668,
+     "user_allocation": 5000.0,
+     "user_usage": 1068.5541666666668
+    }
+   ],
+   "source": "iri:account"
+  }
+ ],
+ "quotas": [
+  {
+   "machine": "polaris",
+   "scope": "user",
+   "name": "keceli",
+   "type": "User",
+   "filesystem": "/home",
+   "pool": null,
+   "used": "38.26G",
+   "quota": "50G",
+   "used_bytes": 41081362186,
+   "quota_bytes": 53687091200,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/grand",
+   "pool": null,
+   "used": "50.9M",
+   "quota": "1T",
+   "used_bytes": 53372518,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/grand",
+   "pool": null,
+   "used": "4.673T",
+   "quota": "10T",
+   "used_bytes": 5138017836597,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "50.9M",
+   "quota": "1T",
+   "used_bytes": 53372518,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "4.673T",
+   "quota": "10T",
+   "used_bytes": 5138017836597,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "HiFiThermKin",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "56k",
+   "quota": "1M",
+   "used_bytes": 57344,
+   "quota_bytes": 1048576,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "ChemGraph",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "790.1G",
+   "quota": "1T",
+   "used_bytes": 848363415142,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:polaris"
+  }
+ ]
+}
