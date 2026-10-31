@@ -36,10 +36,11 @@ Jobs reported by both the IRI API and `qstat` are merged into a single row.
 ### 1. IRI API token
 
 Get a token with [`alcf-tokens`](https://github.com/argonne-lcf/alcf-tokens)
-(needs Python 3.10+):
+(needs Python 3.10+). Install it in its own environment: a `pip install --user`
+into the system Python can pick up incompatible dependencies.
 
 ```bash
-pip install alcf-tokens        # or: uvx alcf-tokens ...
+uv tool install alcf-tokens    # or: pipx install alcf-tokens
 alcf-tokens login iri
 export ALCF_IRI_TOKEN=$(alcf-tokens get-token iri)
 ```
@@ -47,9 +48,17 @@ export ALCF_IRI_TOKEN=$(alcf-tokens get-token iri)
 If `ALCF_IRI_TOKEN` is not set but `alcf-tokens` is on your `PATH`, the
 collector calls `alcf-tokens get-token iri` itself, which also renews the token
 (run `alcf-tokens login iri` again after 7 days); `--token-command` overrides
-this. Without a token only the public system status is collected. The API base
-URL defaults to `https://api.alcf.anl.gov/api/v2`; change it with `--iri-url` or
+this, e.g. `--token-command "uvx alcf-tokens get-token iri"`. If the command
+fails, the dashboard says so and keeps the previous project and job data.
+Without a token only the public system status is collected. The API base URL
+defaults to `https://api.alcf.anl.gov/api/v2`; change it with `--iri-url` or
 `ALCF_IRI_URL`.
+
+The API allows 5 requests per second per user; the collector stays below that
+and retries when it is rate limited, so with many projects a run takes about
+half a minute. Jobs are listed for your ALCF login name, which comes from SSH,
+`--user` (or `ALCF_USER`) or the previous snapshot: the API's `whoami` returns
+an identity UUID instead.
 
 ### 2. SSH (optional)
 
@@ -109,9 +118,9 @@ the tests and deploys `docs/` with the latest snapshot from the
 `scripts/update_dashboard.sh --push` asks for it, and every 30 minutes.
 
 Before deploying, the workflow refreshes the public system status. If an
-`ALCF_IRI_TOKEN` repository secret is set (and optionally an `ALCF_IRI_URL`
-variable), it also refreshes projects and IRI jobs, keeping the snapshot's SSH
-data. IRI access tokens expire after 48 hours; once the secret has expired, the
+`ALCF_IRI_TOKEN` repository secret is set, it also refreshes projects and IRI
+jobs, keeping the snapshot's SSH data; optional `ALCF_IRI_URL` and `ALCF_USER`
+variables override the API URL and the login name. IRI access tokens expire after 48 hours; once the secret has expired, the
 dashboard keeps the last good data and shows a warning. SSH cannot run in
 Actions because of MFA.
 

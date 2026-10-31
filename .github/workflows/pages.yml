@@ -57,6 +57,7 @@ jobs:
         env:
           ALCF_IRI_TOKEN: ${{ secrets.ALCF_IRI_TOKEN }}
           ALCF_IRI_URL: ${{ vars.ALCF_IRI_URL }}
+          ALCF_USER: ${{ vars.ALCF_USER }}
         # SSH needs MFA, so only the IRI API is queried here (without a token,
         # just the public system status); --merge keeps everything else.
         run: |

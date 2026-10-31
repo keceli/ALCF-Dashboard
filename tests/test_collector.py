@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -244,8 +245,18 @@ class FakeResponse(io.BytesIO):
 class Problem:
     """An error response (RFC 9457 problem) served by :class:`FakeIRI`."""
 
-    def __init__(self, status, detail):
-        self.status, self.detail = status, detail
+    def __init__(self, status, detail, headers=None):
+        self.status, self.detail, self.headers = status, detail, headers or {}
+
+
+class Responses:
+    """A route that answers with each response in turn, then keeps repeating the last."""
+
+    def __init__(self, *responses):
+        self.responses = list(responses)
+
+    def next(self):
+        return self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
 
 
 class FakeIRI:
@@ -259,18 +270,22 @@ class FakeIRI:
         path = req.full_url.replace("https://iri.test/api/v2", "")
         self.requests.append(req)
         route = self.routes.get((req.get_method(), path.split("?", 1)[0]), Problem(404, "Not Found"))
+        if isinstance(route, Responses):
+            route = route.next()
         if isinstance(route, Problem):
             body = json.dumps({"status": route.status, "detail": route.detail}).encode()
-            raise urllib.error.HTTPError(req.full_url, route.status, route.detail, {}, io.BytesIO(body))
+            raise urllib.error.HTTPError(req.full_url, route.status, route.detail, route.headers, io.BytesIO(body))
         return FakeResponse(json.dumps(route).encode())
 
     def find(self, method, path):
         return [r for r in self.requests if r.get_method() == method and path in r.full_url]
 
 
-# Shapes as served by ALCF's API v2.
+# Shapes as served by ALCF's API v2.  /account/whoami gives an identity UUID,
+# which user allocations refer to; jobs are listed by login name ("alice").
+ALICE_ID, BOB_ID = "6f1c3b9e-1a2b-4c3d-8e4f-0000000a11ce", "0b0b0b0b-1a2b-4c3d-8e4f-000000000b0b"
 IRI_ROUTES = {
-    ("GET", "/account/whoami"): {"username": "alice"},
+    ("GET", "/account/whoami"): {"username": ALICE_ID},
     ("GET", "/status/resources"): [
         {"id": "r-aurora", "name": "Aurora", "current_status": "up", "supported_endpoints": [],
          "resource_type": "urn:doe-iri:resource:compute", "group": "computes"},
@@ -287,10 +302,10 @@ IRI_ROUTES = {
         {"id": "i2", "name": "old", "status": "down", "start": "2020-01-01T00:00:00Z",
          "end": "2020-01-02T00:00:00Z", "type": "unplanned", "resolution": "completed"},
     ],
+    # Without include_spec, which ALCF rejects, only the queue and account are filled in.
     ("POST", "/compute/status/r-aurora"): [
-        {"id": "123456.aurora-pbs", "status": {"state": "active", "time": 1793390000},
-         "job_spec": {"name": "train", "attributes": {"queue_name": "prod", "account": "MyProject"},
-                      "resources": {"node_count": 128}}},
+        {"id": "123456.aurora-pbs", "status": {"state": "active", "exit_code": None},
+         "job_spec": {"attributes": {"queue_name": "prod", "account": "MyProject"}}},
     ],
     # ALCF answers an empty listing with a 404 problem.
     ("POST", "/compute/status/r-polaris"): Problem(404, "No jobs found"),
@@ -301,8 +316,8 @@ IRI_ROUTES = {
          "entries": [{"allocation": 100000, "usage": 25000, "unit": "urn:doe-iri:allocation:compute:node-hours"}]},
     ],
     ("GET", "/account/projects/MyProject/project_allocations/a1/user_allocations"): [
-        {"id": "u1", "user_id": "bob", "entries": [{"allocation": 0, "usage": 1, "unit": "node_hours"}]},
-        {"id": "u2", "user_id": "alice", "entries": [{"allocation": 0, "usage": 500, "unit": "node_hours"}]},
+        {"id": "u1", "user_id": BOB_ID, "entries": [{"allocation": 0, "usage": 1, "unit": "node_hours"}]},
+        {"id": "u2", "user_id": ALICE_ID, "entries": [{"allocation": 0, "usage": 500, "unit": "node_hours"}]},
     ],
 }
 
@@ -311,19 +326,36 @@ EXPIRED_ROUTES = dict(IRI_ROUTES)
 EXPIRED_ROUTES.update({key: EXPIRED for key in IRI_ROUTES if key[1].startswith(("/account", "/compute"))})
 
 
-def make_client(changes=None, token="tok"):
+RATE_LIMITED = Problem(429, "Per-user rate limit of 5 reqs/sec exceeded.")
+
+
+class FakeTime:
+    """A clock that only advances while sleeping."""
+
+    def __init__(self):
+        self.now, self.sleeps = 1000.0, []
+
+    def clock(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+def make_client(changes=None, token="tok", fake_time=None):
     routes = dict(IRI_ROUTES)
     routes.update(changes or {})
     fake = FakeIRI(routes)
-    return ad.IRIClient("https://iri.test/api/v2/", token, urlopen=fake), fake
+    timing = {"sleep": fake_time.sleep, "clock": fake_time.clock} if fake_time else {"sleep": lambda _: None}
+    return ad.IRIClient("https://iri.test/api/v2/", token, urlopen=fake, **timing), fake
 
 
 class IRITests(unittest.TestCase):
     def test_collect_iri(self):
         client, fake = make_client()
-        user, parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, log=quiet)
+        parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
 
-        self.assertEqual(user, "alice")
         self.assertEqual({name: (ok, errors) for name, (_, errors, ok) in parts.items()},
                          {ad.IRI_STATUS: (True, []), ad.IRI_ACCOUNT: (True, []), ad.IRI_JOBS: (True, [])})
         status, account, jobs = (parts[name][0] for name in (ad.IRI_STATUS, ad.IRI_ACCOUNT, ad.IRI_JOBS))
@@ -333,11 +365,12 @@ class IRITests(unittest.TestCase):
         # Polaris has no jobs (404 "No jobs found") and Sophia is not requested.
         self.assertEqual(len(jobs["jobs"]), 1)
         job = jobs["jobs"][0]
-        self.assertEqual((job["machine"], job["id"], job["state"], job["queue"], job["nodes"], job["source"]),
-                         ("aurora", "123456", "active", "prod", 128, ad.IRI_JOBS))
+        self.assertEqual((job["machine"], job["id"], job["state"], job["queue"], job["project"], job["source"]),
+                         ("aurora", "123456", "active", "prod", "MyProject", ad.IRI_JOBS))
         alloc = account["projects"][0]["allocations"][0]
         self.assertEqual(alloc["capability"], "Aurora nodes")
         self.assertEqual(alloc["unit"], "node_hours")
+        # Your usage is found through the whoami identity.
         self.assertEqual((alloc["allocation"], alloc["usage"], alloc["user_usage"]), (100000, 25000, 500))
 
         self.assertEqual(fake.requests[0].get_header("Authorization"), "Bearer " + "tok")
@@ -345,13 +378,13 @@ class IRITests(unittest.TestCase):
         posts = fake.find("POST", "/compute/status/")
         self.assertEqual(sorted(p.full_url.split("?")[0].rsplit("/", 1)[1] for p in posts),
                          ["r-aurora", "r-polaris"])
-        self.assertIn("include_spec=true", posts[0].full_url)
+        self.assertNotIn("include_spec", posts[0].full_url)  # ALCF answers it with HTTP 501
+        # By login name: without the filter ALCF lists everyone's jobs.
         self.assertEqual(json.loads(posts[0].data), {"owner": "alice"})
 
     def test_without_token_only_public_status(self):
         client, fake = make_client(token=None)
-        user, parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
-        self.assertEqual(user, "alice")
+        parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
         self.assertEqual(list(parts), [ad.IRI_STATUS])
         self.assertTrue(parts[ad.IRI_STATUS][2])
         self.assertFalse(any(r.has_header("Authorization") for r in fake.requests))
@@ -360,38 +393,38 @@ class IRITests(unittest.TestCase):
 
     def test_expired_token_fails_account_and_jobs(self):
         client, _ = make_client(EXPIRED_ROUTES)
-        _, parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
+        parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
         self.assertTrue(parts[ad.IRI_STATUS][2])
         for name in (ad.IRI_ACCOUNT, ad.IRI_JOBS):
             records, errors, ok = parts[name]
             self.assertFalse(ok)
             self.assertIn("HTTP 401 Facility Specific authentication failed", errors[-1])
 
-    def test_v1_without_whoami_uses_given_username(self):
+    def test_whoami_is_optional(self):
         client, fake = make_client({("GET", "/account/whoami"): Problem(404, "Not Found")})
-        user, parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
-        self.assertEqual(user, "alice")
+        parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
         records, errors, ok = parts[ad.IRI_ACCOUNT]
-        self.assertTrue(ok)  # whoami is optional
+        self.assertTrue(ok)
         self.assertIn("whoami", errors[0])
-        self.assertEqual(records["projects"][0]["allocations"][0]["user_usage"], 500)
+        # Without the identity, your share of a multi-user allocation is unknown.
+        self.assertIsNone(records["projects"][0]["allocations"][0]["user_usage"])
         self.assertEqual(json.loads(fake.find("POST", "/compute/status/r-aurora")[0].data), {"owner": "alice"})
 
-    def test_jobs_need_a_username(self):
-        client, fake = make_client({("GET", "/account/whoami"): Problem(404, "Not Found")})
-        _, parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, log=quiet)
-        self.assertEqual(parts[ad.IRI_JOBS][1:], (["skipped: username unknown"], False))
+    def test_jobs_need_the_login_name(self):
+        client, fake = make_client()  # whoami gives an identity, not the login name
+        parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, log=quiet)
+        self.assertEqual(parts[ad.IRI_JOBS][1:], (["skipped: username unknown (use --user)"], False))
         self.assertEqual(fake.find("POST", "/compute/status/"), [])
 
     def test_failed_allocation_call_fails_account(self):
         client, _ = make_client({("GET", "/account/projects/MyProject/project_allocations"): Problem(500, "boom")})
-        _, parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, log=quiet)
+        parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
         self.assertFalse(parts[ad.IRI_ACCOUNT][2])
         self.assertTrue(parts[ad.IRI_JOBS][2])
 
     def test_unexpected_response_shape_is_isolated(self):
         client, _ = make_client({("GET", "/status/resources"): {"items": []}})
-        _, parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, log=quiet)
+        parts = ad.collect_iri(client, ad.DEFAULT_MACHINES, username="alice", log=quiet)
         self.assertFalse(parts[ad.IRI_STATUS][2])
         self.assertIn("expected a list of objects", parts[ad.IRI_STATUS][1][0])
         self.assertTrue(parts[ad.IRI_ACCOUNT][2])
@@ -402,6 +435,30 @@ class IRITests(unittest.TestCase):
         self.assertEqual(client.get_list("/status/incidents"), [])
         with self.assertRaisesRegex(ad.IRIError, "HTTP 404 Not Found"):
             client.get("/no/such/path")
+
+    def test_requests_are_spaced_out(self):
+        # ALCF allows 5 requests per second per user.
+        fake_time = FakeTime()
+        client, _ = make_client(fake_time=fake_time)
+        for _ in range(3):
+            client.get_list("/status/resources")
+        self.assertEqual(fake_time.sleeps, [ad.IRIClient.MIN_INTERVAL] * 2)
+
+    def test_rate_limited_request_is_retried(self):
+        projects = IRI_ROUTES[("GET", "/account/projects")]
+        fake_time = FakeTime()
+        client, fake = make_client({("GET", "/account/projects"): Responses(
+            Problem(429, RATE_LIMITED.detail, {"Retry-After": "3"}), RATE_LIMITED, projects)}, fake_time=fake_time)
+        self.assertEqual(client.get_list("/account/projects"), projects)
+        self.assertEqual(fake_time.sleeps, [3.0, 2])  # Retry-After, then backoff
+        self.assertEqual((len(fake.requests), client.rate_limited), (3, 2))
+
+    def test_persistent_rate_limit_is_an_error(self):
+        fake_time = FakeTime()
+        client, _ = make_client({("GET", "/account/projects"): RATE_LIMITED}, fake_time=fake_time)
+        with self.assertRaisesRegex(ad.IRIError, "HTTP 429 Per-user rate limit"):
+            client.get_list("/account/projects")
+        self.assertEqual(fake_time.sleeps, [1, 2, 4, 8])
 
 
 class MergeTests(unittest.TestCase):
@@ -448,23 +505,30 @@ class MainTests(unittest.TestCase):
             for key in ad.LIST_KEYS:
                 self.assertEqual(snap[key], [])
 
-    def test_expired_token_keeps_previous_data(self):
-        # What the scheduled workflow does once the ALCF_IRI_TOKEN secret expires.
+    def refresh(self, old, routes, env, *args):
+        """Update the snapshot ``old`` from the IRI API only, as the workflow does."""
+        fake = FakeIRI(routes)
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "dashboard.json")
-            old = ad.empty_snapshot()
-            old["sources"] = {ad.IRI_ACCOUNT: {"ok": True, "last_success": "t0"},
-                              ad.IRI_JOBS: {"ok": True, "last_success": "t0"}}
-            old["projects"] = [{"id": "p", "source": ad.IRI_ACCOUNT}]
-            old["jobs"] = [{"id": "1", "machine": "aurora", "source": ad.IRI_JOBS}]
             with open(path, "w") as fh:
                 json.dump(old, fh)
-            with unittest.mock.patch("urllib.request.urlopen", FakeIRI(EXPIRED_ROUTES)), \
-                    unittest.mock.patch.dict(os.environ, {"ALCF_IRI_TOKEN": "expired"}), \
-                    unittest.mock.patch("sys.stdout", io.StringIO()):
-                ad.main(["--no-ssh", "--iri-url", "https://iri.test/api/v2", "--merge", path, "-o", path])
+            with unittest.mock.patch("urllib.request.urlopen", fake), unittest.mock.patch("time.sleep"), \
+                    unittest.mock.patch.dict(os.environ, env), unittest.mock.patch("sys.stdout", io.StringIO()):
+                for key in ("ALCF_IRI_TOKEN", "ALCF_USER"):
+                    if key not in env:
+                        os.environ.pop(key, None)
+                ad.main(["--no-ssh", "--iri-url", "https://iri.test/api/v2", "--merge", path, "-o", path, *args])
             with open(path) as fh:
-                snap = json.load(fh)
+                return json.load(fh), fake
+
+    def test_expired_token_keeps_previous_data(self):
+        # What the scheduled workflow does once the ALCF_IRI_TOKEN secret expires.
+        old = ad.empty_snapshot()
+        old["sources"] = {ad.IRI_ACCOUNT: {"ok": True, "last_success": "t0"},
+                          ad.IRI_JOBS: {"ok": True, "last_success": "t0"}}
+        old["projects"] = [{"id": "p", "source": ad.IRI_ACCOUNT}]
+        old["jobs"] = [{"id": "1", "machine": "aurora", "source": ad.IRI_JOBS}]
+        snap, _ = self.refresh(old, EXPIRED_ROUTES, {"ALCF_IRI_TOKEN": "expired"})
         self.assertEqual(snap["projects"], old["projects"])
         self.assertEqual(snap["jobs"], old["jobs"])
         for name in (ad.IRI_ACCOUNT, ad.IRI_JOBS):
@@ -473,6 +537,27 @@ class MainTests(unittest.TestCase):
         # The public status is still refreshed.
         self.assertTrue(snap["sources"][ad.IRI_STATUS]["ok"])
         self.assertEqual(len(snap["resources"]), 4)
+
+    def test_jobs_are_listed_for_the_snapshot_user(self):
+        # Without SSH the login name comes from the previous snapshot, and the
+        # whoami identity does not replace it.
+        old = ad.empty_snapshot()
+        old["user"] = "alice"
+        snap, fake = self.refresh(old, IRI_ROUTES, {"ALCF_IRI_TOKEN": "tok"})
+        self.assertEqual(json.loads(fake.find("POST", "/compute/status/r-aurora")[0].data), {"owner": "alice"})
+        self.assertEqual(snap["user"], "alice")
+        self.assertEqual([j["id"] for j in snap["jobs"]], ["123456"])
+
+    def test_failing_token_command_is_reported(self):
+        old = ad.empty_snapshot()
+        old["sources"] = {ad.IRI_ACCOUNT: {"ok": True, "last_success": "t0"}}
+        old["projects"] = [{"id": "p", "source": ad.IRI_ACCOUNT}]
+        command = shlex.quote(sys.executable) + " -c \"raise SystemExit('RuntimeError: boom')\""
+        snap, _ = self.refresh(old, IRI_ROUTES, {}, "--token-command", command)
+        account = snap["sources"][ad.IRI_ACCOUNT]
+        self.assertEqual((account["ok"], account["errors"]), (False, ["token command failed: RuntimeError: boom"]))
+        self.assertEqual(snap["projects"], old["projects"])
+        self.assertTrue(snap["sources"][ad.IRI_STATUS]["ok"])
 
 
 if __name__ == "__main__":
