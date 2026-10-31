@@ -3,12 +3,26 @@
  "generated_at": "2026-10-30T21:00:00+00:00",
  "user": "demo_user",
  "sources": {
-  "iri": {
+  "iri:account": {
    "ok": true,
    "errors": [],
    "collected_at": "2026-10-30T21:00:00+00:00",
    "last_success": "2026-10-30T21:00:00+00:00",
-   "url": "https://api.alcf.anl.gov/api/v1"
+   "url": "https://api.alcf.anl.gov/api/v2"
+  },
+  "iri:jobs": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-30T21:00:00+00:00",
+   "last_success": "2026-10-30T21:00:00+00:00",
+   "url": "https://api.alcf.anl.gov/api/v2"
+  },
+  "iri:status": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-10-30T21:00:00+00:00",
+   "last_success": "2026-10-30T21:00:00+00:00",
+   "url": "https://api.alcf.anl.gov/api/v2"
   },
   "ssh:aurora": {
    "ok": true,
@@ -24,60 +38,63 @@
   },
   "ssh:crux": {
    "ok": false,
-   "errors": [],
+   "errors": [
+    "ssh crux.alcf.anl.gov exited with 255: Permission denied (sample)"
+   ],
    "collected_at": "2026-10-30T21:00:00+00:00",
-   "last_success": null,
-   "error": "ssh crux.alcf.anl.gov exited with 255: Permission denied (sample)"
+   "last_success": null
   }
  },
  "resources": [
   {
    "id": "r-aurora",
-   "name": "aurora",
+   "name": "Aurora",
    "description": null,
    "status": "up",
    "type": "compute",
-   "group": null,
-   "endpoints": [
-    "compute"
-   ],
-   "source": "iri"
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
   },
   {
    "id": "r-polaris",
    "name": "Polaris",
    "description": null,
    "status": "degraded",
-   "type": null,
-   "group": null,
-   "endpoints": [
-    "compute"
-   ],
-   "source": "iri"
-  },
-  {
-   "id": "r-eagle",
-   "name": "eagle",
-   "description": null,
-   "status": "up",
-   "type": null,
-   "group": null,
-   "endpoints": [
-    "filesystem"
-   ],
-   "source": "iri"
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
   },
   {
    "id": "r-crux",
-   "name": "crux",
+   "name": "Crux",
    "description": null,
    "status": "up",
-   "type": null,
-   "group": null,
-   "endpoints": [
-    "compute"
-   ],
-   "source": "iri"
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "r-eagle",
+   "name": "Eagle",
+   "description": null,
+   "status": "up",
+   "type": "storage",
+   "group": "storages",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "r-flare",
+   "name": "Flare",
+   "description": null,
+   "status": "up",
+   "type": "storage",
+   "group": "storages",
+   "endpoints": [],
+   "source": "iri:status"
   }
  ],
  "incidents": [
@@ -91,7 +108,7 @@
    "start": "2026-10-30T00:00:00Z",
    "end": null,
    "resources": [],
-   "source": "iri"
+   "source": "iri:status"
   }
  ],
  "jobs": [
@@ -111,7 +128,7 @@
    "estimated_start": null,
    "updated": "2026-10-30T19:53:20+00:00",
    "exit_code": null,
-   "source": "iri"
+   "source": "iri:jobs"
   },
   {
    "machine": "polaris",
@@ -129,14 +146,14 @@
    "estimated_start": null,
    "updated": null,
    "exit_code": null,
-   "source": "iri"
+   "source": "iri:jobs"
   },
   {
    "machine": "aurora",
    "id": "123456",
    "name": "train",
    "state": "active",
-   "message": null,
+   "message": "Job run at Thu Oct 29 at 11:00",
    "queue": "prod",
    "project": "DemoAI",
    "nodes": 128,
@@ -220,7 +237,7 @@
      "user_usage": 5497558138880
     }
    ],
-   "source": "iri"
+   "source": "iri:account"
   },
   {
    "id": "DemoSim",
@@ -246,7 +263,7 @@
      "user_usage": 1099511627776
     }
    ],
-   "source": "iri"
+   "source": "iri:account"
   }
  ],
  "quotas": [
@@ -256,11 +273,12 @@
    "name": "demo_user",
    "type": "User",
    "filesystem": "/home",
+   "pool": null,
    "used": "7.45G",
    "quota": "50.00G",
    "used_bytes": 7999376589,
    "quota_bytes": 53687091200,
-   "grace": "none",
+   "grace": "-",
    "source": "ssh:aurora"
   },
   {
@@ -268,25 +286,27 @@
    "scope": "project",
    "name": "DemoAI",
    "type": "Project",
-   "filesystem": "flare",
+   "filesystem": "/lus/flare",
+   "pool": null,
    "used": "1.5T",
    "quota": "10T",
    "used_bytes": 1649267441664,
    "quota_bytes": 10995116277760,
-   "grace": "none",
+   "grace": "-",
    "source": "ssh:aurora"
   },
   {
    "machine": "aurora",
    "scope": "project",
-   "name": "DemoAI",
+   "name": "DemoSim",
    "type": "Project",
-   "filesystem": "eagle",
+   "filesystem": "/lus/flare",
+   "pool": null,
    "used": "8k",
    "quota": "1T",
    "used_bytes": 8192,
    "quota_bytes": 1099511627776,
-   "grace": "none",
+   "grace": "-",
    "source": "ssh:aurora"
   },
   {
@@ -295,11 +315,26 @@
    "name": "demo_user",
    "type": "User",
    "filesystem": "/home",
+   "pool": null,
    "used": "46.2G",
    "quota": "50.00G",
    "used_bytes": 49606872269,
    "quota_bytes": 53687091200,
-   "grace": "none",
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "DemoOld",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "1.2G*",
+   "quota": "1M",
+   "used_bytes": 1288490188,
+   "quota_bytes": 1048576,
+   "grace": "expired",
    "source": "ssh:polaris"
   }
  ]

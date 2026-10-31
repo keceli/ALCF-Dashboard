@@ -12,11 +12,10 @@ Data sources, in order of preference:
   (``qselect``/``qstat``) and filesystem quotas (``myquota`` /
   ``myprojectquotas``).
 
-Only the Python standard library is used so the script runs anywhere,
-including ALCF login nodes and GitHub Actions runners.
+Only the Python standard library (3.6+) is used so the script runs anywhere,
+including ALCF login nodes (``/usr/bin/python3`` is 3.6) and GitHub Actions
+runners.
 """
-
-from __future__ import annotations
 
 import argparse
 import datetime as _dt
@@ -32,12 +31,15 @@ import urllib.parse
 import urllib.request
 
 SCHEMA_VERSION = 1
-DEFAULT_IRI_URL = "https://api.alcf.anl.gov/api/v1"
+DEFAULT_IRI_URL = "https://api.alcf.anl.gov/api/v2"
 DEFAULT_MACHINES = ("aurora", "polaris", "crux")
 DEFAULT_OUTPUT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, "docs", "data", "dashboard.json"
 )
 LIST_KEYS = ("resources", "incidents", "jobs", "projects", "quotas")
+# IRI sources.  Each is all-or-nothing: its records replace the previous
+# snapshot's only when every call it depends on succeeded (see merge_snapshots).
+IRI_STATUS, IRI_ACCOUNT, IRI_JOBS = "iri:status", "iri:account", "iri:jobs"
 
 
 def utcnow() -> str:
@@ -100,6 +102,24 @@ def parse_pbs_time(text):
         return str(text)
 
 
+_ISO_RE = re.compile(r"^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)(\.\d+)?(Z|[+-]\d\d:?\d\d)?$")
+
+
+def parse_iso(text):
+    """Parse an ISO 8601 timestamp; naive times are UTC (``fromisoformat`` needs 3.7+)."""
+    match = _ISO_RE.match(str(text or "").strip())
+    if not match:
+        return None
+    day, clock, fraction, zone = match.groups()
+    parsed = _dt.datetime.strptime(day + "T" + clock, "%Y-%m-%dT%H:%M:%S")
+    if fraction:
+        parsed = parsed.replace(microsecond=int(fraction[1:7].ljust(6, "0")))
+    minutes = 0
+    if zone and zone != "Z":
+        minutes = (1 if zone[0] == "+" else -1) * (int(zone[1:3]) * 60 + int(zone[-2:]))
+    return parsed.replace(tzinfo=_dt.timezone(_dt.timedelta(minutes=minutes)))
+
+
 def epoch_to_iso(value):
     if value in (None, ""):
         return None
@@ -140,10 +160,27 @@ class IRIError(RuntimeError):
     pass
 
 
-class IRIClient:
-    """Minimal client for the IRI Facility API."""
+def _problem_detail(text):
+    """The ``detail`` of an RFC 9457 problem response, or ``""``."""
+    try:
+        detail = json.loads(text).get("detail")
+    except (ValueError, AttributeError):
+        return ""
+    return detail if isinstance(detail, str) else ""
 
-    def __init__(self, base_url, token, timeout=60, urlopen=None):
+
+def as_records(value):
+    """Check that a response is a list of JSON objects, as IRI collections are."""
+    if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
+        raise ValueError(f"expected a list of objects, got {type(value).__name__}")
+    return value
+
+
+class IRIClient:
+    """Minimal client for the IRI Facility API.  Without a token only the
+    public endpoints (``/status/...``) can be used."""
+
+    def __init__(self, base_url, token=None, timeout=60, urlopen=None):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
@@ -153,7 +190,9 @@ class IRIClient:
         url = self.base_url + path
         if params:
             url += "?" + urllib.parse.urlencode(params)
-        headers = {"Accept": "application/json", "Authorization": "Bearer " + self.token}
+        headers = {"Accept": "application/json"}
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
         data = None
         if body is not None:
             data = json.dumps(body).encode()
@@ -163,8 +202,12 @@ class IRIClient:
             with self._urlopen(req, timeout=self.timeout) as resp:
                 payload = resp.read()
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode(errors="replace")[:300] if exc.fp else ""
-            raise IRIError(f"{method} {path}: HTTP {exc.code} {detail}".strip()) from None
+            text = exc.read().decode(errors="replace") if exc.fp else ""
+            detail = _problem_detail(text)
+            # ALCF answers an empty collection with 404 {"detail": "No incidents found"}.
+            if exc.code == 404 and re.match(r"No .* found", detail):
+                return []
+            raise IRIError(f"{method} {path}: HTTP {exc.code} {(detail or text)[:200]}".strip()) from None
         except (urllib.error.URLError, OSError) as exc:
             raise IRIError(f"{method} {path}: {exc}") from None
         if not payload:
@@ -177,6 +220,12 @@ class IRIClient:
     def post(self, path, body=None, **params):
         return self.request("POST", path, params=params or None, body=body)
 
+    def get_list(self, path, **params):
+        return as_records(self.get(path, **params))
+
+    def post_list(self, path, body=None, **params):
+        return as_records(self.post(path, body, **params))
+
 
 def normalize_resource(res):
     return {
@@ -187,8 +236,15 @@ def normalize_resource(res):
         "type": last_path_segment(str(res.get("resource_type")).replace(":", "/")) if res.get("resource_type") else None,
         "group": res.get("group"),
         "endpoints": res.get("supported_endpoints") or [],
-        "source": "iri",
+        "source": IRI_STATUS,
     }
+
+
+def is_compute(resource):
+    """True for a normalized compute resource.  ALCF leaves ``supported_endpoints``
+    empty, so the resource type (``compute`` or ``urn:doe-iri:resource:compute``)
+    decides."""
+    return resource.get("type") == "compute" or "compute" in (resource.get("endpoints") or [])
 
 
 def incident_is_current(incident, now=None):
@@ -196,13 +252,8 @@ def incident_is_current(incident, now=None):
     end = incident.get("end")
     if not end:
         return True
-    try:
-        end_dt = _dt.datetime.fromisoformat(str(end).replace("Z", "+00:00"))
-    except ValueError:
-        return True
-    if end_dt.tzinfo is None:
-        end_dt = end_dt.replace(tzinfo=_dt.timezone.utc)
-    return end_dt >= now
+    end_dt = parse_iso(end)
+    return end_dt is None or end_dt >= now
 
 
 def normalize_incident(inc):
@@ -216,7 +267,7 @@ def normalize_incident(inc):
         "start": inc.get("start"),
         "end": inc.get("end"),
         "resources": [last_path_segment(u) for u in inc.get("resource_uris") or []],
-        "source": "iri",
+        "source": IRI_STATUS,
     }
 
 
@@ -241,7 +292,7 @@ def normalize_iri_job(job, machine):
         "estimated_start": None,
         "updated": epoch_to_iso(status.get("time")),
         "exit_code": status.get("exit_code"),
-        "source": "iri",
+        "source": IRI_JOBS,
     }
 
 
@@ -273,7 +324,7 @@ def normalize_project(project, allocations, capabilities, user_allocations=None)
         "name": project.get("name") or project.get("id"),
         "description": project.get("description"),
         "allocations": rows,
-        "source": "iri",
+        "source": IRI_ACCOUNT,
     }
 
 
@@ -295,68 +346,98 @@ def match_machine(name, machines):
     return None
 
 
-def collect_iri(client, machines, log=print):
-    """Query the IRI API.  Each call is independent so partial data survives errors."""
-    out = {key: [] for key in LIST_KEYS}
-    out["user"] = None
-    errors = []
+def collect_iri(client, machines, username=None, log=print):
+    """Query the IRI API.
 
-    def attempt(label, func):
+    Returns ``(user, parts)`` where ``parts`` maps each IRI source to
+    ``(records, errors, ok)``.  ``ok`` is False when a call the source depends
+    on failed (e.g. with an expired token), so that :func:`merge_snapshots`
+    keeps the previous data instead of an empty list.  Without a token only the
+    public status is collected.  ``username`` (e.g. from SSH) stands in when
+    ``/account/whoami`` is unavailable, as in API v1.
+    """
+    errors = {IRI_STATUS: [], IRI_ACCOUNT: [], IRI_JOBS: []}
+    failed = set()
+
+    def attempt(source, label, func, fatal=True):
         try:
             return func()
-        except (IRIError, ValueError) as exc:
-            errors.append(f"{label}: {exc}")
+        except (IRIError, ValueError, TypeError, AttributeError) as exc:
+            errors[source].append(f"{label}: {exc}")
+            if fatal:
+                failed.add(source)
             log(f"  [iri] {label} failed: {exc}")
             return None
 
-    who = attempt("whoami", lambda: client.get("/account/whoami"))
-    if isinstance(who, dict):
-        out["user"] = who.get("username")
+    def part(source, **records):
+        return records, errors[source], source not in failed
 
-    resources = attempt("status/resources", lambda: client.get("/status/resources")) or []
-    out["resources"] = [normalize_resource(r) for r in resources]
+    resources = attempt(IRI_STATUS, "status/resources", lambda: [
+        normalize_resource(r) for r in client.get_list("/status/resources")])
+    # Unfiltered, incidents come oldest first, 100 per page: ask for current ones.
+    now = _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0)
+    incidents = attempt(IRI_STATUS, "status/incidents", lambda: [
+        normalize_incident(i)
+        for i in client.get_list("/status/incidents", time=now.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        if incident_is_current(i, now)], fatal=False)
+    status = part(IRI_STATUS, resources=resources or [], incidents=incidents or [])
+    if not client.token:
+        return username, {IRI_STATUS: status}
 
-    incidents = attempt("status/incidents", lambda: client.get("/status/incidents")) or []
-    out["incidents"] = [normalize_incident(i) for i in incidents if incident_is_current(i)]
+    who = attempt(IRI_ACCOUNT, "whoami", lambda: client.get("/account/whoami"), fatal=False)
+    user = (who.get("username") if isinstance(who, dict) else None) or username
 
-    # Jobs on every compute resource that matches one of the requested machines.
-    compute = [r for r in resources if "compute" in (r.get("supported_endpoints") or [])]
-    targets = [(r, match_machine(r.get("name"), machines)) for r in compute]
-    for res, machine in targets:
-        if not machine:
-            continue
-        rid = urllib.parse.quote(str(res.get("id")), safe="")
-        jobs = attempt(
-            f"compute/status/{machine}",
-            lambda rid=rid: client.post(f"/compute/status/{rid}", body={}, include_spec="true"),
-        ) or []
-        out["jobs"].extend(normalize_iri_job(j, machine) for j in jobs)
-
-    caps = attempt("account/capabilities", lambda: client.get("/account/capabilities")) or []
-    capabilities = {c.get("id"): c for c in caps}
-    projects = attempt("account/projects", lambda: client.get("/account/projects")) or []
-    for project in projects:
+    projects = []
+    caps = attempt(IRI_ACCOUNT, "account/capabilities", lambda: {
+        c.get("id"): c for c in client.get_list("/account/capabilities")}, fatal=False) or {}
+    for project in attempt(IRI_ACCOUNT, "account/projects", lambda: client.get_list("/account/projects")) or []:
         pid = urllib.parse.quote(str(project.get("id")), safe="")
         allocs = attempt(
-            f"projects/{project.get('id')}/project_allocations",
-            lambda pid=pid: client.get(f"/account/projects/{pid}/project_allocations"),
+            IRI_ACCOUNT, f"projects/{project.get('id')}/project_allocations",
+            lambda pid=pid: client.get_list(f"/account/projects/{pid}/project_allocations"),
         ) or []
         user_allocs = {}
         for alloc in allocs:
             aid = urllib.parse.quote(str(alloc.get("id")), safe="")
             uas = attempt(
-                f"projects/{project.get('id')}/user_allocations",
-                lambda pid=pid, aid=aid: client.get(
+                IRI_ACCOUNT, f"projects/{project.get('id')}/user_allocations",
+                lambda pid=pid, aid=aid: client.get_list(
                     f"/account/projects/{pid}/project_allocations/{aid}/user_allocations"
                 ),
+                fatal=False,
             )
-            picked = _pick_user_allocation(uas, out["user"])
+            picked = _pick_user_allocation(uas, user)
             if picked:
                 user_allocs[alloc.get("id")] = picked
-        out["projects"].append(normalize_project(project, allocs, capabilities, user_allocs))
+        row = attempt(IRI_ACCOUNT, f"projects/{project.get('id')}",
+                      lambda: normalize_project(project, allocs, caps, user_allocs))
+        if row:
+            projects.append(row)
 
-    out["errors"] = errors
-    return out
+    # Jobs on every compute resource that matches one of the requested machines,
+    # filtered by owner so that other users' jobs never end up on the page.
+    jobs = []
+    if resources is None or not user:
+        reason = "resource list unavailable" if resources is None else "username unknown"
+        errors[IRI_JOBS].append("skipped: " + reason)
+        failed.add(IRI_JOBS)
+    else:
+        for res in resources:
+            machine = match_machine(res["name"], machines) if is_compute(res) else None
+            if not machine:
+                continue
+            rid = urllib.parse.quote(str(res["id"]), safe="")
+            found = attempt(IRI_JOBS, f"compute/status/{machine}", lambda rid=rid, machine=machine: [
+                normalize_iri_job(j, machine)
+                for j in client.post_list(f"/compute/status/{rid}", body={"owner": user},
+                                          include_spec="true", limit=1000)])
+            jobs.extend(found or [])
+
+    return user, {
+        IRI_STATUS: status,
+        IRI_ACCOUNT: part(IRI_ACCOUNT, projects=projects),
+        IRI_JOBS: part(IRI_JOBS, jobs=jobs),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -379,8 +460,8 @@ echo "@@END"
 PBS_STATES = {
     "Q": "queued", "W": "queued", "M": "queued", "T": "queued",
     "H": "held", "S": "held", "U": "held",
-    "R": "active", "E": "active", "B": "active", "X": "active",
-    "F": "completed",
+    "R": "active", "E": "active", "B": "active",
+    "F": "completed", "X": "completed",
 }
 
 
@@ -416,6 +497,13 @@ def _to_int(value):
         return None
 
 
+def _pbs_comment(comment):
+    """Drop the exec host list that PBS appends to "Job run at ..." comments."""
+    if not comment:
+        return None
+    return re.sub(r"^(Job run at .*?) on \(.*$", r"\1", str(comment), flags=re.S)
+
+
 def parse_qstat_json(text, machine):
     data = _loads_lenient(text) if text.strip() else {}
     jobs = []
@@ -432,7 +520,7 @@ def parse_qstat_json(text, machine):
             "id": short_job_id(job_id),
             "name": job.get("Job_Name"),
             "state": state,
-            "message": job.get("comment"),
+            "message": _pbs_comment(job.get("comment")),
             "queue": job.get("queue"),
             "project": job.get("project") or job.get("Account_Name"),
             "nodes": _to_int(rlist.get("nodect")),
@@ -448,40 +536,42 @@ def parse_qstat_json(text, machine):
     return jobs
 
 
-def parse_quota_table(text, machine, scope):
+def parse_quota_table(text, machine):
     """Parse the tables printed by ``myquota`` / ``myprojectquotas``.
 
-    Rows follow a ``====`` separator line and have the columns
-    ``Name Type Filesystem Used Quota [Grace]``.
+    Columns come from the header line above the ``====`` separator, e.g.
+    ``Name Type Filesystem Used Quota Grace``; Aurora adds a ``Pool`` column.
+    ``myquota`` lists project quotas too, so the scope comes from ``Type``.
     """
-    rows, started = [], False
+    rows, header, previous = [], None, ""
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         if set(stripped) <= set("=-"):
-            started = True
+            header = [c.lower() for c in previous.split()]
             continue
-        if not started:
+        previous = stripped
+        if not header or not {"name", "used", "quota"} <= set(header):
             continue
-        parts = stripped.split()
-        if len(parts) < 5:
-            continue
-        name, kind, filesystem, used, quota = parts[:5]
+        cols = dict(zip(header, stripped.split(None, len(header) - 1)))
+        used, quota = cols.get("used"), cols.get("quota")
         used_b, quota_b = parse_size(used), parse_size(quota)
         if used_b is None and quota_b is None:
             continue  # repeated header or free text
+        kind, pool = cols.get("type"), cols.get("pool")
         rows.append({
             "machine": machine,
-            "scope": scope,
-            "name": name,
+            "scope": (kind or "").lower() or None,
+            "name": cols["name"],
             "type": kind,
-            "filesystem": filesystem,
+            "filesystem": cols.get("filesystem"),
+            "pool": None if pool in (None, "-") else pool,
             "used": used,
             "quota": quota,
             "used_bytes": used_b,
             "quota_bytes": quota_b,
-            "grace": " ".join(parts[5:]) or None,
+            "grace": cols.get("grace"),
             "source": f"ssh:{machine}",
         })
     return rows
@@ -490,7 +580,7 @@ def parse_quota_table(text, machine, scope):
 def dedupe_quotas(rows):
     seen, out = set(), []
     for row in rows:
-        key = (row["name"], row["type"], row["filesystem"])
+        key = (row["name"], row["type"], row["filesystem"], row["pool"])
         if key not in seen:
             seen.add(key)
             out.append(row)
@@ -503,7 +593,8 @@ def collect_ssh(machine, host, ssh_command="ssh", timeout=120, run=subprocess.ru
         "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", host, "bash", "-l", "-s",
     ]
     try:
-        proc = run(cmd, input=SSH_SCRIPT, capture_output=True, text=True, timeout=timeout)
+        proc = run(cmd, input=SSH_SCRIPT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                   universal_newlines=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError(f"ssh {host}: {exc}") from None
     if "@@END" not in proc.stdout:
@@ -515,8 +606,8 @@ def collect_ssh(machine, host, ssh_command="ssh", timeout=120, run=subprocess.ru
         out["jobs"] = parse_qstat_json(sections.get("jobs", ""), machine)
     except ValueError as exc:
         out["errors"].append(f"qstat: {exc}")
-    quotas = parse_quota_table(sections.get("myquota", ""), machine, "user")
-    quotas += parse_quota_table(sections.get("myprojectquotas", ""), machine, "project")
+    quotas = parse_quota_table(sections.get("myquota", ""), machine)
+    quotas += parse_quota_table(sections.get("myprojectquotas", ""), machine)
     out["quotas"] = dedupe_quotas(quotas)
     return out
 
@@ -564,7 +655,8 @@ def get_token(args):
         command = "alcf-tokens get-token iri"
     if command:
         try:
-            proc = subprocess.run(shlex.split(command), capture_output=True, text=True, timeout=120)
+            proc = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  universal_newlines=True, timeout=120)
         except (OSError, subprocess.TimeoutExpired) as exc:
             print(f"  [iri] token command failed: {exc}", file=sys.stderr)
             return None
@@ -610,28 +702,22 @@ def build_parser():
     return p
 
 
+def add_source(snap, name, records, errors, ok, **extra):
+    """Record a source.  Its records are only added when it succeeded; otherwise
+    :func:`merge_snapshots` keeps those of the previous snapshot."""
+    now = utcnow()
+    snap["sources"][name] = dict(extra, ok=ok, errors=errors, collected_at=now,
+                                 last_success=now if ok else None)
+    if ok:
+        for key, rows in records.items():
+            snap[key].extend(rows)
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
     machines = [m.strip().lower() for m in args.machines.split(",") if m.strip()]
     hosts = parse_host_overrides(args.ssh_host)
     snap = empty_snapshot()
-
-    if not args.no_iri:
-        print(f"[iri] querying {args.iri_url}")
-        token = get_token(args)
-        if not token:
-            snap["sources"]["iri"] = {"ok": False, "error": f"no access token (set {args.token_env})",
-                                      "collected_at": utcnow()}
-            print(f"  [iri] skipped: no access token (set {args.token_env} or install alcf-tokens)")
-        else:
-            data = collect_iri(IRIClient(args.iri_url, token), machines)
-            ok = not data["errors"] or any(data[k] for k in LIST_KEYS)
-            snap["sources"]["iri"] = {"ok": ok, "errors": data["errors"], "collected_at": utcnow(),
-                                      "last_success": utcnow() if ok else None, "url": args.iri_url}
-            if ok:
-                for key in LIST_KEYS:
-                    snap[key].extend(data[key])
-                snap["user"] = data["user"]
 
     if not args.no_ssh:
         for machine in machines:
@@ -644,13 +730,25 @@ def main(argv=None):
                 data = collect_ssh(machine, host, args.ssh_command, args.ssh_timeout)
             except RuntimeError as exc:
                 print(f"  [ssh] {exc}")
-                snap["sources"][name] = {"ok": False, "error": str(exc), "collected_at": utcnow()}
+                add_source(snap, name, {}, [str(exc)], False)
                 continue
-            snap["sources"][name] = {"ok": True, "errors": data["errors"], "collected_at": utcnow(),
-                                     "last_success": utcnow()}
-            snap["jobs"].extend(data["jobs"])
-            snap["quotas"].extend(data["quotas"])
+            for error in data["errors"]:
+                print(f"  [ssh] {error}")
+            add_source(snap, name, {"jobs": data["jobs"], "quotas": data["quotas"]},
+                       data["errors"], not data["errors"])
             snap["user"] = snap["user"] or data["user"]
+
+    # After SSH, whose username stands in when /account/whoami is unavailable.
+    if not args.no_iri:
+        print(f"[iri] querying {args.iri_url}")
+        token = get_token(args)
+        if not token:
+            print(f"  [iri] no access token (set {args.token_env} or install alcf-tokens): "
+                  "collecting the public system status only")
+        user, parts = collect_iri(IRIClient(args.iri_url, token), machines, username=snap["user"])
+        snap["user"] = user or snap["user"]
+        for name, (records, errors, ok) in parts.items():
+            add_source(snap, name, records, errors, ok, url=args.iri_url)
 
     if args.merge and os.path.exists(args.merge):
         with open(args.merge, encoding="utf-8") as fh:
