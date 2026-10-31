@@ -45,8 +45,10 @@ case $every in
 esac
 
 # Skip this run while a previous one is still going (e.g. a slow SSH host).
+# The lock lives in our own git directory: other users can write to /tmp.
 if command -v flock >/dev/null 2>&1; then
-  exec 9>"${TMPDIR:-/tmp}/alcf-dashboard-$(id -u).lock"
+  lock_dir=$(git -C "$repo" rev-parse --absolute-git-dir 2>/dev/null) || lock_dir=$repo
+  exec 9>"$lock_dir/update_dashboard.lock"
   flock -n 9 || { echo "another update is still running; skipping"; exit 0; }
 fi
 
