@@ -26,6 +26,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -176,15 +177,40 @@ def as_records(value):
     return value
 
 
+def _retry_after(headers, default):
+    """Seconds asked for by a ``Retry-After`` header (at most a minute), else ``default``."""
+    try:
+        return max(0.0, min(float(headers.get("Retry-After")), 60.0))
+    except (AttributeError, TypeError, ValueError):
+        return default
+
+
 class IRIClient:
     """Minimal client for the IRI Facility API.  Without a token only the
-    public endpoints (``/status/...``) can be used."""
+    public endpoints (``/status/...``) can be used.
 
-    def __init__(self, base_url, token=None, timeout=60, urlopen=None):
+    ALCF allows 5 requests per second per user, so requests are spaced
+    ``MIN_INTERVAL`` apart and retried with backoff after HTTP 429.
+    """
+
+    MIN_INTERVAL = 0.25
+    RETRIES = 4
+
+    def __init__(self, base_url, token=None, timeout=60, urlopen=None, sleep=None, clock=None):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
         self._urlopen = urlopen or urllib.request.urlopen
+        self._sleep = sleep or time.sleep
+        self._clock = clock or time.monotonic
+        self._next_request = 0.0
+        self.rate_limited = 0  # HTTP 429 responses retried
+
+    def _wait_turn(self):
+        delay = self._next_request - self._clock()
+        if delay > 0:
+            self._sleep(delay)
+        self._next_request = self._clock() + self.MIN_INTERVAL
 
     def request(self, method, path, params=None, body=None):
         url = self.base_url + path
@@ -198,18 +224,25 @@ class IRIClient:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
-        try:
-            with self._urlopen(req, timeout=self.timeout) as resp:
-                payload = resp.read()
-        except urllib.error.HTTPError as exc:
-            text = exc.read().decode(errors="replace") if exc.fp else ""
-            detail = _problem_detail(text)
-            # ALCF answers an empty collection with 404 {"detail": "No incidents found"}.
-            if exc.code == 404 and re.match(r"No .* found", detail):
-                return []
-            raise IRIError(f"{method} {path}: HTTP {exc.code} {(detail or text)[:200]}".strip()) from None
-        except (urllib.error.URLError, OSError) as exc:
-            raise IRIError(f"{method} {path}: {exc}") from None
+        for attempt in range(self.RETRIES + 1):
+            self._wait_turn()
+            try:
+                with self._urlopen(req, timeout=self.timeout) as resp:
+                    payload = resp.read()
+                break
+            except urllib.error.HTTPError as exc:
+                text = exc.read().decode(errors="replace") if exc.fp else ""
+                detail = _problem_detail(text)
+                if exc.code == 429 and attempt < self.RETRIES:
+                    self.rate_limited += 1
+                    self._sleep(_retry_after(exc.headers, 2 ** attempt))
+                    continue
+                # ALCF answers an empty collection with 404 {"detail": "No incidents found"}.
+                if exc.code == 404 and re.match(r"No .* found", detail):
+                    return []
+                raise IRIError(f"{method} {path}: HTTP {exc.code} {(detail or text)[:200]}".strip()) from None
+            except (urllib.error.URLError, OSError) as exc:
+                raise IRIError(f"{method} {path}: {exc}") from None
         if not payload:
             return None
         return json.loads(payload)
@@ -328,10 +361,10 @@ def normalize_project(project, allocations, capabilities, user_allocations=None)
     }
 
 
-def _pick_user_allocation(user_allocs, username):
+def _pick_user_allocation(user_allocs, user_ids):
     user_allocs = user_allocs or []
     for ua in user_allocs:
-        if username and ua.get("user_id") == username:
+        if ua.get("user_id") in user_ids:
             return ua
     if len(user_allocs) == 1:
         return user_allocs[0]
@@ -349,12 +382,11 @@ def match_machine(name, machines):
 def collect_iri(client, machines, username=None, log=print):
     """Query the IRI API.
 
-    Returns ``(user, parts)`` where ``parts`` maps each IRI source to
-    ``(records, errors, ok)``.  ``ok`` is False when a call the source depends
-    on failed (e.g. with an expired token), so that :func:`merge_snapshots`
-    keeps the previous data instead of an empty list.  Without a token only the
-    public status is collected.  ``username`` (e.g. from SSH) stands in when
-    ``/account/whoami`` is unavailable, as in API v1.
+    Returns a dict that maps each IRI source to ``(records, errors, ok)``.
+    ``ok`` is False when a call the source depends on failed (e.g. with an
+    expired token), so that :func:`merge_snapshots` keeps the previous data
+    instead of an empty list.  Without a token only the public status is
+    collected.  Jobs are listed for ``username``, the ALCF login name.
     """
     errors = {IRI_STATUS: [], IRI_ACCOUNT: [], IRI_JOBS: []}
     failed = set()
@@ -382,10 +414,11 @@ def collect_iri(client, machines, username=None, log=print):
         if incident_is_current(i, now)], fatal=False)
     status = part(IRI_STATUS, resources=resources or [], incidents=incidents or [])
     if not client.token:
-        return username, {IRI_STATUS: status}
+        return {IRI_STATUS: status}
 
+    # At ALCF this is an identity UUID, which user allocations refer to, not the login name.
     who = attempt(IRI_ACCOUNT, "whoami", lambda: client.get("/account/whoami"), fatal=False)
-    user = (who.get("username") if isinstance(who, dict) else None) or username
+    user_ids = {who.get("username") if isinstance(who, dict) else None, username} - {None}
 
     projects = []
     caps = attempt(IRI_ACCOUNT, "account/capabilities", lambda: {
@@ -406,7 +439,7 @@ def collect_iri(client, machines, username=None, log=print):
                 ),
                 fatal=False,
             )
-            picked = _pick_user_allocation(uas, user)
+            picked = _pick_user_allocation(uas, user_ids)
             if picked:
                 user_allocs[alloc.get("id")] = picked
         row = attempt(IRI_ACCOUNT, f"projects/{project.get('id')}",
@@ -414,11 +447,12 @@ def collect_iri(client, machines, username=None, log=print):
         if row:
             projects.append(row)
 
-    # Jobs on every compute resource that matches one of the requested machines,
-    # filtered by owner so that other users' jobs never end up on the page.
+    # Jobs on every compute resource that matches one of the requested machines.
+    # Without the owner filter ALCF lists everyone's jobs.  It rejects
+    # include_spec (HTTP 501) but returns the queue and account anyway.
     jobs = []
-    if resources is None or not user:
-        reason = "resource list unavailable" if resources is None else "username unknown"
+    if resources is None or not username:
+        reason = "resource list unavailable" if resources is None else "username unknown (use --user)"
         errors[IRI_JOBS].append("skipped: " + reason)
         failed.add(IRI_JOBS)
     else:
@@ -429,11 +463,10 @@ def collect_iri(client, machines, username=None, log=print):
             rid = urllib.parse.quote(str(res["id"]), safe="")
             found = attempt(IRI_JOBS, f"compute/status/{machine}", lambda rid=rid, machine=machine: [
                 normalize_iri_job(j, machine)
-                for j in client.post_list(f"/compute/status/{rid}", body={"owner": user},
-                                          include_spec="true", limit=1000)])
+                for j in client.post_list(f"/compute/status/{rid}", body={"owner": username}, limit=1000)])
             jobs.extend(found or [])
 
-    return user, {
+    return {
         IRI_STATUS: status,
         IRI_ACCOUNT: part(IRI_ACCOUNT, projects=projects),
         IRI_JOBS: part(IRI_JOBS, jobs=jobs),
@@ -647,23 +680,37 @@ def merge_snapshots(new, old):
 
 
 def get_token(args):
+    """Return ``(token, error)``; ``error`` says why the token command failed."""
     token = os.environ.get(args.token_env, "").strip()
     if token:
-        return token
+        return token, None
     command = args.token_command
     if command is None and shutil.which("alcf-tokens"):
         command = "alcf-tokens get-token iri"
-    if command:
+    if not command:
+        return None, None
+    try:
+        proc = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              universal_newlines=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"token command failed: {exc}"
+    if proc.returncode == 0 and proc.stdout.strip():
+        return proc.stdout.strip().splitlines()[-1].strip(), None
+    # The last line of an error message or traceback is the telling one.
+    lines = (proc.stderr or proc.stdout).strip().splitlines()
+    return None, "token command failed: " + (lines[-1].strip() if lines else f"exit status {proc.returncode}")
+
+
+def read_snapshot(path):
+    """The snapshot at ``path``, or None if there is none or it is unreadable."""
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
         try:
-            proc = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                  universal_newlines=True, timeout=120)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            print(f"  [iri] token command failed: {exc}", file=sys.stderr)
+            return json.load(fh)
+        except json.JSONDecodeError as exc:
+            print(f"[merge] ignoring unreadable {path}: {exc}")
             return None
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout.strip().splitlines()[-1].strip()
-        print(f"  [iri] token command failed: {proc.stderr.strip()}", file=sys.stderr)
-    return None
 
 
 def parse_host_overrides(values):
@@ -684,6 +731,9 @@ def build_parser():
                    help="previous snapshot whose data is kept for sources not refreshed by this run")
     p.add_argument("--machines", default=",".join(DEFAULT_MACHINES),
                    help="comma separated machines (default: %(default)s)")
+    p.add_argument("--user", default=os.environ.get("ALCF_USER"),
+                   help="your ALCF login name, for listing your jobs through the IRI API "
+                        "(default: $ALCF_USER, else from SSH or the --merge snapshot)")
     g = p.add_argument_group("IRI API")
     g.add_argument("--no-iri", action="store_true", help="skip the IRI API")
     g.add_argument("--iri-url", default=os.environ.get("ALCF_IRI_URL", DEFAULT_IRI_URL),
@@ -717,7 +767,9 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     machines = [m.strip().lower() for m in args.machines.split(",") if m.strip()]
     hosts = parse_host_overrides(args.ssh_host)
+    previous = read_snapshot(args.merge)
     snap = empty_snapshot()
+    snap["user"] = args.user
 
     if not args.no_ssh:
         for machine in machines:
@@ -738,24 +790,29 @@ def main(argv=None):
                        data["errors"], not data["errors"])
             snap["user"] = snap["user"] or data["user"]
 
-    # After SSH, whose username stands in when /account/whoami is unavailable.
+    # The IRI API lists jobs by login name; without SSH (e.g. in CI) it comes
+    # from the previous snapshot.
+    snap["user"] = snap["user"] or (previous or {}).get("user")
     if not args.no_iri:
         print(f"[iri] querying {args.iri_url}")
-        token = get_token(args)
+        token, token_error = get_token(args)
+        if token_error:
+            print(f"  [iri] {token_error}")
         if not token:
             print(f"  [iri] no access token (set {args.token_env} or install alcf-tokens): "
                   "collecting the public system status only")
-        user, parts = collect_iri(IRIClient(args.iri_url, token), machines, username=snap["user"])
-        snap["user"] = user or snap["user"]
+        client = IRIClient(args.iri_url, token)
+        parts = collect_iri(client, machines, username=snap["user"])
+        if client.rate_limited:
+            print(f"  [iri] rate limited {client.rate_limited} times and retried; "
+                  "is something else using your account at the same time?")
+        if token_error:
+            # Show the failure, and keep the previous account and job data.
+            parts.update({name: ({}, [token_error], False) for name in (IRI_ACCOUNT, IRI_JOBS)})
         for name, (records, errors, ok) in parts.items():
             add_source(snap, name, records, errors, ok, url=args.iri_url)
 
-    if args.merge and os.path.exists(args.merge):
-        with open(args.merge, encoding="utf-8") as fh:
-            try:
-                snap = merge_snapshots(snap, json.load(fh))
-            except json.JSONDecodeError as exc:
-                print(f"[merge] ignoring unreadable {args.merge}: {exc}")
+    snap = merge_snapshots(snap, previous)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     tmp = args.output + ".tmp"
