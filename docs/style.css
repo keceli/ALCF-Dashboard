@@ -9,6 +9,10 @@
   --warn: #c77700;
   --bad: #c5221f;
   --info: #1967d2;
+  /* Machines: Intel blue, NVIDIA green, AMD red. */
+  --aurora: #0071c5;
+  --polaris: #76b900;
+  --crux: #ed1c24;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,6 +23,9 @@
     --muted: #9aa7b4;
     --border: #2c3640;
     --accent: #6ab0ff;
+    /* Deeper green and red stay distinct and balanced on dark cards. */
+    --polaris: #6caa00;
+    --crux: #d0161f;
   }
 }
 
@@ -114,5 +121,22 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .incident.down { border-left-color: var(--bad); }
 
 .muted { color: var(--muted); }
+
+.machine { white-space: nowrap; }
+.machine::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: .45em;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.machine.aurora::before { background: var(--aurora); }
+.machine.polaris::before { background: var(--polaris); }
+.machine.crux::before { background: var(--crux); }
+.card.machine-aurora { border-top: 4px solid var(--aurora); }
+.card.machine-polaris { border-top: 4px solid var(--polaris); }
+.card.machine-crux { border-top: 4px solid var(--crux); }
 footer { padding: 1rem 1.5rem 2rem; color: var(--muted); text-align: center; font-size: .85rem; }
 a { color: var(--accent); }

@@ -59,10 +59,11 @@ jobs:
           ALCF_IRI_URL: ${{ vars.ALCF_IRI_URL }}
           ALCF_USER: ${{ vars.ALCF_USER }}
         # SSH needs MFA, so only the IRI API is queried here (without a token,
-        # just the public system status); --merge keeps everything else.
+        # just the public system status); --merge keeps everything else, and
+        # --no-config publishes only the projects the snapshot already shows.
         run: |
           [ -n "$ALCF_IRI_URL" ] || unset ALCF_IRI_URL
-          python collector/alcf_dashboard.py --no-ssh \
+          python collector/alcf_dashboard.py --no-ssh --no-config \
             --merge docs/data/dashboard.json -o docs/data/dashboard.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

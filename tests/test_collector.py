@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -496,14 +497,16 @@ class MainTests(unittest.TestCase):
     def test_main_without_sources_writes_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "out", "dashboard.json")
+            config = os.path.join(tmp, "dashboard.ini")
             with unittest.mock.patch("sys.stdout", io.StringIO()):
-                rc = ad.main(["--no-iri", "--no-ssh", "-o", path])
+                rc = ad.main(["--no-iri", "--no-ssh", "-o", path, "--config", config])
             self.assertEqual(rc, 0)
             with open(path) as fh:
                 snap = json.load(fh)
             self.assertEqual(snap["schema_version"], ad.SCHEMA_VERSION)
             for key in ad.LIST_KEYS:
                 self.assertEqual(snap[key], [])
+            self.assertTrue(os.path.exists(config))
 
     def refresh(self, old, routes, env, *args):
         """Update the snapshot ``old`` from the IRI API only, as the workflow does."""
@@ -517,7 +520,8 @@ class MainTests(unittest.TestCase):
                 for key in ("ALCF_IRI_TOKEN", "ALCF_USER"):
                     if key not in env:
                         os.environ.pop(key, None)
-                ad.main(["--no-ssh", "--iri-url", "https://iri.test/api/v2", "--merge", path, "-o", path, *args])
+                ad.main(["--no-ssh", "--iri-url", "https://iri.test/api/v2", "--merge", path, "-o", path,
+                         "--no-config", *args])
             with open(path) as fh:
                 return json.load(fh), fake
 
@@ -526,8 +530,8 @@ class MainTests(unittest.TestCase):
         old = ad.empty_snapshot()
         old["sources"] = {ad.IRI_ACCOUNT: {"ok": True, "last_success": "t0"},
                           ad.IRI_JOBS: {"ok": True, "last_success": "t0"}}
-        old["projects"] = [{"id": "p", "source": ad.IRI_ACCOUNT}]
-        old["jobs"] = [{"id": "1", "machine": "aurora", "source": ad.IRI_JOBS}]
+        old["projects"] = [{"id": "p", "name": "P", "source": ad.IRI_ACCOUNT}]
+        old["jobs"] = [{"id": "1", "machine": "aurora", "project": "P", "source": ad.IRI_JOBS}]
         snap, _ = self.refresh(old, EXPIRED_ROUTES, {"ALCF_IRI_TOKEN": "expired"})
         self.assertEqual(snap["projects"], old["projects"])
         self.assertEqual(snap["jobs"], old["jobs"])
@@ -543,21 +547,105 @@ class MainTests(unittest.TestCase):
         # whoami identity does not replace it.
         old = ad.empty_snapshot()
         old["user"] = "alice"
+        old["jobs"] = [{"id": "1", "machine": "aurora", "project": "MyProject", "source": ad.IRI_JOBS}]
         snap, fake = self.refresh(old, IRI_ROUTES, {"ALCF_IRI_TOKEN": "tok"})
         self.assertEqual(json.loads(fake.find("POST", "/compute/status/r-aurora")[0].data), {"owner": "alice"})
         self.assertEqual(snap["user"], "alice")
         self.assertEqual([j["id"] for j in snap["jobs"]], ["123456"])
 
+    def test_workflow_publishes_only_published_projects(self):
+        # With --no-config, even a token cannot publish what the previous
+        # (already filtered) snapshot did not show.
+        old = ad.empty_snapshot()
+        old["user"] = "alice"
+        snap, _ = self.refresh(old, IRI_ROUTES, {"ALCF_IRI_TOKEN": "tok"})
+        self.assertEqual((snap["projects"], snap["jobs"]), ([], []))
+        old["projects"] = [{"id": "MyProject", "name": "MyProject", "allocations": [], "source": ad.IRI_ACCOUNT}]
+        snap, _ = self.refresh(old, IRI_ROUTES, {"ALCF_IRI_TOKEN": "tok"})
+        self.assertEqual([len(p["allocations"]) for p in snap["projects"]], [1])  # refreshed
+        self.assertEqual(snap["jobs"], [])
+
     def test_failing_token_command_is_reported(self):
         old = ad.empty_snapshot()
         old["sources"] = {ad.IRI_ACCOUNT: {"ok": True, "last_success": "t0"}}
-        old["projects"] = [{"id": "p", "source": ad.IRI_ACCOUNT}]
+        old["projects"] = [{"id": "p", "name": "P", "source": ad.IRI_ACCOUNT}]
         command = shlex.quote(sys.executable) + " -c \"raise SystemExit('RuntimeError: boom')\""
         snap, _ = self.refresh(old, IRI_ROUTES, {}, "--token-command", command)
         account = snap["sources"][ad.IRI_ACCOUNT]
         self.assertEqual((account["ok"], account["errors"]), (False, ["token command failed: RuntimeError: boom"]))
         self.assertEqual(snap["projects"], old["projects"])
         self.assertTrue(snap["sources"][ad.IRI_STATUS]["ok"])
+
+
+class ConfigTests(unittest.TestCase):
+    """Choosing what to publish in dashboard.ini."""
+
+    @staticmethod
+    def snapshot():
+        snap = ad.empty_snapshot()
+        snap["user"] = "alice"
+        # The same project can be "Catalyst" in the IRI API and "catalyst" elsewhere.
+        snap["projects"] = [{"id": "u1", "name": "Catalyst", "allocations": [], "source": ad.IRI_ACCOUNT},
+                            {"id": "u2", "name": "Other", "allocations": [], "source": ad.IRI_ACCOUNT}]
+        snap["quotas"] = [{"name": "catalyst", "filesystem": "/lus/eagle", "source": "ssh:crux"},
+                          {"name": "alice", "filesystem": "/home", "source": "ssh:crux"},
+                          {"name": "Other", "filesystem": "/lus/flare", "source": "ssh:aurora"}]
+        snap["jobs"] = [{"id": "1", "machine": "crux", "project": "catalyst", "source": "ssh:crux"},
+                        {"id": "2", "machine": "aurora", "project": "Other", "source": "ssh:aurora"}]
+        return snap
+
+    def publish(self, tmp, config=None):
+        """Publish snapshot() with the given dashboard.ini; return (snapshot, config text, output)."""
+        previous, out, path = (os.path.join(tmp, name) for name in ("previous.json", "out.json", "dashboard.ini"))
+        with open(previous, "w") as fh:
+            json.dump(self.snapshot(), fh)
+        if config is not None:
+            with open(path, "w") as fh:
+                fh.write(config)
+        with unittest.mock.patch("sys.stdout", io.StringIO()) as stdout:
+            ad.main(["--no-iri", "--no-ssh", "--merge", previous, "-o", out, "--config", path])
+        with open(out) as fh, open(path) as cf:
+            return json.load(fh), cf.read(), stdout.getvalue()
+
+    def test_first_run_lists_everything_hidden(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            snap, config, output = self.publish(tmp)
+        self.assertEqual((snap["projects"], snap["quotas"], snap["jobs"]), ([], [], []))
+        self.assertIn("created", output)
+        self.assertEqual(re.findall(r"^\[(.+)\]$", config, re.M), ["alice", "Catalyst", "Other"])
+        self.assertNotIn("= 1", config)
+        self.assertIn("[Catalyst]\nallocations = 0\nquotas = 0\njobs = 0\n", config)
+        self.assertIn("[alice]\nquotas = 0\n\n", config)  # your home directories
+
+    def test_selected_projects_are_published(self):
+        config = "[catalyst]\nallocations = 1\nquotas = 0\njobs = 1  ; inline comment\n\n[alice]\nquotas = 1\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            snap, _, _ = self.publish(tmp, config)
+        self.assertEqual([p["name"] for p in snap["projects"]], ["Catalyst"])
+        self.assertEqual([q["name"] for q in snap["quotas"]], ["alice"])
+        self.assertEqual([j["id"] for j in snap["jobs"]], ["1"])
+
+    def test_new_projects_are_appended_hidden(self):
+        config = "# my notes\n[Catalyst]\nallocations = 1\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            snap, text, output = self.publish(tmp, config)
+        self.assertTrue(text.startswith(config))  # your edits and comments stay
+        self.assertEqual(re.findall(r"^\[(.+)\]$", text, re.M), ["Catalyst", "alice", "Other"])
+        self.assertNotIn("= 1", text[len(config):])
+        self.assertIn("added 2 new projects", output)
+        self.assertEqual([p["name"] for p in snap["projects"]], ["Catalyst"])
+
+    def test_invalid_value_stays_hidden(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            snap, _, output = self.publish(tmp, "[Catalyst]\nallocations = yes please\n")
+        self.assertEqual(snap["projects"], [])
+        self.assertIn("must be 0 or 1", output)
+
+    def test_unreadable_config_publishes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(SystemExit, "cannot read"):
+                self.publish(tmp, "allocations = 1\n")  # no [project] header
+            self.assertFalse(os.path.exists(os.path.join(tmp, "out.json")))
 
 
 if __name__ == "__main__":

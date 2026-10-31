@@ -42,6 +42,22 @@
 
   function badge(value) { return h("span", { "class": "badge " + cssToken(value), text: value || "unknown" }); }
 
+  // Colored in style.css: Aurora Intel blue, Polaris NVIDIA green, Crux AMD red.
+  var MACHINES = ["aurora", "polaris", "crux"];
+
+  function machineKey(name) {
+    var lower = String(name || "").toLowerCase();
+    return MACHINES.filter(function (m) { return lower.indexOf(m) >= 0; })[0] || null;
+  }
+
+  // A machine or resource name behind a dot in its color; the name carries the identity.
+  function machineLabel(name) {
+    if (!name) return "–";
+    var text = String(name);
+    return h("span", { "class": "machine " + (machineKey(text) || "other"),
+      text: text.charAt(0).toUpperCase() + text.slice(1) });
+  }
+
   function fmtNumber(n, digits) {
     if (n === null || n === undefined || n === "") return "–";
     return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits === undefined ? 1 : digits });
@@ -175,7 +191,7 @@
   // Quotas from SSH plus storage allocations reported by the IRI API.
   function quotaRows(data) {
     var rows = (data.quotas || []).map(function (q) {
-      return { where: q.machine, name: q.name, kind: q.scope || q.type,
+      return { where: q.machine, machine: q.machine, name: q.name, kind: q.scope || q.type,
         fs: q.pool ? q.filesystem + " (" + q.pool + ")" : q.filesystem,
         used: q.used_bytes, quota: q.quota_bytes, unit: "bytes", grace: q.grace, source: q.source };
     });
@@ -284,8 +300,8 @@
       var sources = data.sources || {};
       var ssh = sources["ssh:" + m];
       var collected = jobs.length || ssh || (sources["iri:jobs"] && sources["iri:jobs"].ok);
-      el.appendChild(h("div", { "class": "card" },
-        h("div", { "class": "label", text: m }),
+      el.appendChild(h("div", { "class": "card" + (machineKey(m) ? " machine-" + machineKey(m) : "") },
+        h("div", { "class": "label" }, machineLabel(m)),
         h("div", null, res ? badge(res.status) : h("span", { "class": "muted", text: "status n/a" })),
         h("div", { "class": "detail", text: collected ? running + " running · " + queued + " queued" : "no job data" }),
         ssh ? h("div", { "class": "detail", text: "ssh: " + (ssh.ok ? "ok" : "failed") + " " + fmtAgo(ssh.collected_at) }) : null));
@@ -332,7 +348,7 @@
     });
 
     table($("jobs"), [
-      { title: "Machine", render: function (j) { return j.machine; } },
+      { title: "Machine", render: function (j) { return machineLabel(j.machine); } },
       { title: "Job ID", render: function (j) { return j.id; } },
       { title: "Name", render: function (j) { return j.name || "–"; } },
       { title: "State", render: function (j) { return badge(j.state); }, tip: function (j) { return j.message; } },
@@ -365,7 +381,7 @@
         return (a.unit === "node_hours" ? 0 : 1) - (b.unit === "node_hours" ? 0 : 1);
       });
       table(t, [
-        { title: "Resource", render: function (a) { return a.capability || "–"; } },
+        { title: "Resource", render: function (a) { return machineLabel(a.capability); } },
         { title: "Used", num: true, render: function (a) { return fmtAmount(a.usage, a.unit); } },
         { title: "Allocation", num: true, render: function (a) { return fmtAmount(a.allocation, a.unit); } },
         { title: "Remaining", num: true, render: function (a) {
@@ -387,7 +403,7 @@
     var rows = quotaRows(data);
     rows.sort(function (a, b) { return (pct(b.used, b.quota) || 0) - (pct(a.used, a.quota) || 0); });
     table($("quotas"), [
-      { title: "Machine", render: function (r) { return r.where || "–"; } },
+      { title: "Machine", render: function (r) { return r.machine ? machineLabel(r.machine) : r.where || "–"; } },
       { title: "Name", render: function (r) { return r.name; } },
       { title: "Type", render: function (r) { return r.kind || "–"; } },
       { title: "Filesystem", render: function (r) { return r.fs || "–"; } },

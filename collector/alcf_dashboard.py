@@ -18,6 +18,7 @@ runners.
 """
 
 import argparse
+import configparser
 import datetime as _dt
 import json
 import os
@@ -38,6 +39,18 @@ DEFAULT_OUTPUT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, "docs", "data", "dashboard.json"
 )
 LIST_KEYS = ("resources", "incidents", "jobs", "projects", "quotas")
+DEFAULT_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "dashboard.ini")
+# What each project in the config can publish (see update_config).
+VISIBILITY_KINDS = ("allocations", "quotas", "jobs")
+CONFIG_HEADER = """\
+# Which projects appear on the dashboard.  Everything starts hidden: set an
+# option to 1 to publish it and run the collector again.  Projects found
+# later are added at the end, hidden.  Names match case-insensitively.
+#
+#   allocations  compute and storage allocations (IRI API)
+#   quotas       storage quotas (myquota and myprojectquotas over SSH)
+#   jobs         jobs charged to the project
+"""
 # IRI sources.  Each is all-or-nothing: its records replace the previous
 # snapshot's only when every call it depends on succeeded (see merge_snapshots).
 IRI_STATUS, IRI_ACCOUNT, IRI_JOBS = "iri:status", "iri:account", "iri:jobs"
@@ -713,6 +726,74 @@ def read_snapshot(path):
             return None
 
 
+def snapshot_names(snap):
+    """The names the config controls, by kind: projects with allocations, quota
+    owners (projects, and you for your home directories) and job projects."""
+    return {
+        "allocations": {p["name"] for p in snap["projects"] if p.get("name")},
+        "quotas": {q["name"] for q in snap["quotas"] if q.get("name")},
+        "jobs": {j["project"] for j in snap["jobs"] if j.get("project")},
+    }
+
+
+def read_config(path):
+    """Return ``(shown, listed)``: the lowercase (name, kind) pairs set to 1, and
+    the lowercase names the config lists."""
+    parser = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#", ";"))
+    try:
+        parser.read(path, encoding="utf-8")
+    except configparser.Error as exc:
+        raise SystemExit(f"[config] cannot read {path}: {exc}")
+    shown, listed = set(), set()
+    for section in parser.sections():
+        listed.add(section.lower())
+        for kind in VISIBILITY_KINDS:
+            try:
+                if parser.getboolean(section, kind, fallback=False):
+                    shown.add((section.lower(), kind))
+            except ValueError:
+                print(f"[config] {path}: [{section}] {kind} must be 0 or 1; keeping it hidden")
+    return shown, listed
+
+
+def update_config(path, names, user):
+    """Create the config, or append the names it does not list yet, with every
+    option set to 0.  Returns how many names were added."""
+    exists = os.path.exists(path)
+    listed = read_config(path)[1] if exists else set()
+    new = {}
+    for kind in VISIBILITY_KINDS:  # so that the IRI spelling of a project wins
+        for name in sorted(names[kind]):
+            if name.lower() not in listed:
+                new.setdefault(name.lower(), name)
+    if exists and not new:
+        return 0
+    lines = []
+    for key in sorted(new):
+        # Your own name only has quotas: those of your home directories.
+        kinds = ("quotas",) if user and key == user.lower() else VISIBILITY_KINDS
+        lines += [f"[{new[key]}]"] + [f"{kind} = 0" for kind in kinds] + [""]
+    with open(path, "a" if exists else "w", encoding="utf-8") as fh:
+        fh.write((f"\n# Added {utcnow()[:10]}\n" if exists else CONFIG_HEADER + "\n") + "\n".join(lines))
+    return len(new)
+
+
+def filter_snapshot(snap, shown):
+    """Drop the projects, quotas and jobs whose lowercase (name, kind) is not in
+    ``shown``.  Returns how many of each were dropped."""
+    def keep(name, kind):
+        return bool(name) and (name.lower(), kind) in shown
+
+    kept = {
+        "projects": [p for p in snap["projects"] if keep(p.get("name"), "allocations")],
+        "quotas": [q for q in snap["quotas"] if keep(q.get("name"), "quotas")],
+        "jobs": [j for j in snap["jobs"] if keep(j.get("project"), "jobs")],
+    }
+    hidden = {key: len(snap[key]) - len(rows) for key, rows in kept.items()}
+    snap.update(kept)
+    return hidden
+
+
 def parse_host_overrides(values):
     hosts = {}
     for value in values or []:
@@ -734,6 +815,12 @@ def build_parser():
     p.add_argument("--user", default=os.environ.get("ALCF_USER"),
                    help="your ALCF login name, for listing your jobs through the IRI API "
                         "(default: $ALCF_USER, else from SSH or the --merge snapshot)")
+    v = p.add_mutually_exclusive_group()
+    v.add_argument("--config", default=os.path.normpath(DEFAULT_CONFIG),
+                   help="which projects to publish; created on the first run with everything hidden "
+                        "(default: dashboard.ini in the repository)")
+    v.add_argument("--no-config", action="store_true",
+                   help="publish only the projects that the --merge snapshot already shows (for CI)")
     g = p.add_argument_group("IRI API")
     g.add_argument("--no-iri", action="store_true", help="skip the IRI API")
     g.add_argument("--iri-url", default=os.environ.get("ALCF_IRI_URL", DEFAULT_IRI_URL),
@@ -814,13 +901,30 @@ def main(argv=None):
 
     snap = merge_snapshots(snap, previous)
 
+    # Publish only what the config allows.  Without one (in CI), publish only
+    # what the previous snapshot already showed.
+    if args.no_config:
+        before = snapshot_names(previous or empty_snapshot())
+        shown = {(name.lower(), kind) for kind, names in before.items() for name in names}
+    else:
+        created = not os.path.exists(args.config)
+        added = update_config(args.config, snapshot_names(snap), snap["user"])
+        if created:
+            print(f"[config] created {args.config} with {added} projects, all hidden: "
+                  "set options to 1 to publish them")
+        elif added:
+            print(f"[config] added {added} new projects to {args.config}, hidden")
+        shown = read_config(args.config)[0]
+    hidden = filter_snapshot(snap, shown)
+
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     tmp = args.output + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(snap, fh, indent=1)
         fh.write("\n")
     os.replace(tmp, args.output)
-    print(f"wrote {args.output}: " + ", ".join(f"{len(snap[k])} {k}" for k in LIST_KEYS))
+    print(f"wrote {args.output}: " + ", ".join(
+        f"{len(snap[k])} {k}" + (f" ({hidden[k]} hidden)" if hidden.get(k) else "") for k in LIST_KEYS))
     return 0
 
 
