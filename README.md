@@ -109,6 +109,33 @@ and no SSH agent: make sure `python3`, `git`, `gh` and `alcf-tokens` are found
 and that `git push` to GitHub works without a prompt. A run is skipped while
 the previous one is still going.
 
+### Choosing what to publish
+
+The first run creates `dashboard.ini` next to the README, listing every
+project it finds with all options set to 0, so nothing about your projects is
+published until you choose to:
+
+```ini
+[Catalyst]
+allocations = 1   ; compute and storage allocations (IRI API)
+quotas = 1        ; storage quotas (myquota / myprojectquotas)
+jobs = 0          ; jobs charged to the project
+
+[<your username>]
+quotas = 1        ; your home directories
+```
+
+Set the options you want to 1 and run the update again. Projects found later
+are appended, hidden. Names match case-insensitively, and the file is
+gitignored because it lists all your projects, including hidden ones. Use
+`--config PATH` to keep it elsewhere. Filtering happens before the snapshot is
+written, so hidden data never reaches the published `dashboard.json`; the
+workflow runs with `--no-config` and never publishes a project that the
+snapshot does not already show.
+
+The dashboard marks each machine with a color: Aurora in Intel blue, Polaris in
+NVIDIA green and Crux in AMD red.
+
 ### 4. GitHub Pages
 
 In the repository settings, set **Pages → Build and deployment → Source** to

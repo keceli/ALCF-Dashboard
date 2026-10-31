@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 # Local snapshot, published on the dashboard-data branch by scripts/update_dashboard.sh --push.
 docs/data/dashboard.json
+# Which projects to publish; it lists all your projects, so keep it local.
+dashboard.ini
