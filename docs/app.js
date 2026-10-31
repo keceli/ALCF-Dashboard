@@ -5,6 +5,7 @@
   var DATA_URL = "data/dashboard.json";
   var SAMPLE_URL = "data/sample.json";
   var REFRESH_MS = 5 * 60 * 1000;
+  var STALE_HOURS = 12;
   var STATE_ORDER = ["active", "queued", "held", "new", "unknown", "failed", "canceled", "completed"];
 
   var current = null;
@@ -96,6 +97,9 @@
     return Math.max(0, (100 * Number(used)) / Number(total));
   }
 
+  // Projects past their end keep their data under a placeholder quota (e.g. 1M).
+  function fmtPct(p) { return p === null ? "–" : p >= 1000 ? ">999%" : p.toFixed(1) + "%"; }
+
   function bar(used, total, userUsed) {
     var p = pct(used, total);
     var level = p === null ? "" : p >= 90 ? " bad" : p >= 75 ? " warn" : "";
@@ -159,12 +163,30 @@
     var found = null;
     (data.resources || []).forEach(function (r) {
       var name = String(r.name || "").toLowerCase();
-      if (!found && name.indexOf(machine) >= 0 && (r.endpoints || []).indexOf("compute") >= 0) found = r;
+      var compute = r.type === "compute" || (r.endpoints || []).indexOf("compute") >= 0;
+      if (!found && name.indexOf(machine) >= 0 && compute) found = r;
     });
     (data.resources || []).forEach(function (r) {
       if (!found && String(r.name || "").toLowerCase() === machine) found = r;
     });
     return found;
+  }
+
+  // Quotas from SSH plus storage allocations reported by the IRI API.
+  function quotaRows(data) {
+    var rows = (data.quotas || []).map(function (q) {
+      return { where: q.machine, name: q.name, kind: q.scope || q.type,
+        fs: q.pool ? q.filesystem + " (" + q.pool + ")" : q.filesystem,
+        used: q.used_bytes, quota: q.quota_bytes, unit: "bytes", grace: q.grace, source: q.source };
+    });
+    (data.projects || []).forEach(function (p) {
+      (p.allocations || []).forEach(function (a) {
+        if (a.unit !== "bytes" && a.unit !== "inodes") return;
+        rows.push({ where: "IRI", name: p.name, kind: "project", fs: a.capability, used: a.usage,
+          quota: a.allocation, unit: a.unit, grace: null, source: p.source });
+      });
+    });
+    return rows;
   }
 
   // --------------------------------------------------------------- render
@@ -177,19 +199,27 @@
     $("meta-updated").textContent = "Snapshot: " + fmtTime(data.generated_at) + " (" + fmtAgo(data.generated_at) + ")";
     $("meta-updated").title = data.generated_at || "";
 
-    var banner = $("banner");
-    var failed = Object.keys(data.sources || {}).filter(function (k) { return !data.sources[k].ok; });
+    var sources = data.sources || {};
+    var names = Object.keys(sources).sort();
+    var failing = names.filter(function (k) { return !sources[k].ok || (sources[k].errors || []).length; });
+    var stale = names.filter(function (k) {
+      var t = parseTime(sources[k].collected_at);
+      return t && Date.now() - t.getTime() > STALE_HOURS * 3600 * 1000;
+    });
+    var notes = [];
     if (isSample) {
-      banner.hidden = false;
-      banner.textContent = "Showing sample data. Run collector/alcf_dashboard.py to generate docs/data/dashboard.json " +
-        "(see README) and publish it to replace this demo.";
-    } else if (failed.length) {
-      banner.hidden = false;
-      banner.textContent = "Some data sources failed during the last collection: " + failed.join(", ") +
-        ". Data from those sources may be missing or stale — see Data sources below.";
+      notes.push("Showing sample data. Run collector/alcf_dashboard.py to generate docs/data/dashboard.json " +
+        "(see README) and publish it to replace this demo.");
     } else {
-      banner.hidden = true;
+      if (failing.length) notes.push("Some data sources reported errors: " + failing.join(", ") +
+        ". Their data may be missing or stale — see Data sources below.");
+      if (stale.length) notes.push("Not refreshed in over " + STALE_HOURS + " hours: " + stale.map(function (k) {
+        return k + " (" + fmtAgo(sources[k].collected_at) + ")";
+      }).join(", ") + ".");
     }
+    var banner = $("banner");
+    banner.hidden = !notes.length;
+    banner.textContent = notes.join(" ");
 
     renderSummary(data);
     renderSystems(data);
@@ -214,11 +244,14 @@
       var left = Number(a.allocation) - Number(a.usage);
       if (a.allocation && (lowest === null || left / a.allocation < lowest.frac)) lowest = { a: a, left: left, frac: left / a.allocation };
     });
-    var fullest = null;
-    (data.quotas || []).forEach(function (q) {
-      var p = pct(q.used_bytes, q.quota_bytes);
-      if (p !== null && (fullest === null || p > fullest.p)) fullest = { q: q, p: p };
+    var overQuota = {}, fullest = null;
+    quotaRows(data).forEach(function (r) {
+      var p = pct(r.used, r.quota);
+      if (p === null) return;
+      if (p > 100) overQuota[r.name + " on " + r.fs] = true;
+      else if (fullest === null || p > fullest.p) fullest = { r: r, p: p };
     });
+    var over = Object.keys(overQuota);
 
     var cards = [
       { label: "Running jobs", value: count("active"), detail: fmtNumber(nodes, 0) + " nodes in use" },
@@ -226,8 +259,10 @@
       { label: "Projects", value: (data.projects || []).length, detail: compute.length + " compute allocations" },
       lowest ? { label: "Lowest balance", value: Math.round(100 * lowest.frac) + "%",
         detail: fmtAmount(lowest.left, "node_hours") + " left on " + (lowest.a.capability || "?") } : null,
+      over.length ? { label: "Over quota", value: over.length,
+        detail: over.slice(0, 2).join(", ") + (over.length > 2 ? ", …" : "") } : null,
       fullest ? { label: "Fullest quota", value: Math.round(fullest.p) + "%",
-        detail: fullest.q.name + " on " + fullest.q.filesystem + " (" + fullest.q.machine + ")" } : null
+        detail: fullest.r.name + " on " + fullest.r.fs + " (" + fullest.r.where + ")" } : null
     ];
     var el = clear($("summary"));
     cards.forEach(function (c) {
@@ -246,11 +281,13 @@
       var jobs = data.jobs.filter(function (j) { return j.machine === m; });
       var running = jobs.filter(function (j) { return j.state === "active"; }).length;
       var queued = jobs.filter(function (j) { return ["queued", "held", "new"].indexOf(j.state) >= 0; }).length;
-      var ssh = (data.sources || {})["ssh:" + m];
+      var sources = data.sources || {};
+      var ssh = sources["ssh:" + m];
+      var collected = jobs.length || ssh || (sources["iri:jobs"] && sources["iri:jobs"].ok);
       el.appendChild(h("div", { "class": "card" },
         h("div", { "class": "label", text: m }),
         h("div", null, res ? badge(res.status) : h("span", { "class": "muted", text: "status n/a" })),
-        h("div", { "class": "detail", text: running + " running · " + queued + " queued" }),
+        h("div", { "class": "detail", text: collected ? running + " running · " + queued + " queued" : "no job data" }),
         ssh ? h("div", { "class": "detail", text: "ssh: " + (ssh.ok ? "ok" : "failed") + " " + fmtAgo(ssh.collected_at) }) : null));
     });
 
@@ -336,9 +373,7 @@
         } },
         { title: "", render: function (a) { return bar(a.usage, a.allocation, a.user_usage); },
           tip: function (a) { return "green: project usage, blue: your usage"; } },
-        { title: "%", num: true, render: function (a) {
-          var v = pct(a.usage, a.allocation); return v === null ? "–" : v.toFixed(1) + "%";
-        } },
+        { title: "%", num: true, render: function (a) { return fmtPct(pct(a.usage, a.allocation)); } },
         { title: "Your usage", num: true, render: function (a) { return fmtAmount(a.user_usage, a.unit); } }
       ], rows, "No allocations.");
       el.appendChild(h("div", { "class": "project" },
@@ -349,17 +384,7 @@
   }
 
   function renderQuotas(data) {
-    var rows = (data.quotas || []).map(function (q) {
-      return { where: q.machine, name: q.name, kind: q.scope || q.type, fs: q.filesystem,
-        used: q.used_bytes, quota: q.quota_bytes, unit: "bytes", grace: q.grace, source: q.source };
-    });
-    (data.projects || []).forEach(function (p) {
-      (p.allocations || []).forEach(function (a) {
-        if (a.unit !== "bytes" && a.unit !== "inodes") return;
-        rows.push({ where: "IRI", name: p.name, kind: "project", fs: a.capability, used: a.usage,
-          quota: a.allocation, unit: a.unit, grace: null, source: p.source });
-      });
-    });
+    var rows = quotaRows(data);
     rows.sort(function (a, b) { return (pct(b.used, b.quota) || 0) - (pct(a.used, a.quota) || 0); });
     table($("quotas"), [
       { title: "Machine", render: function (r) { return r.where || "–"; } },
@@ -369,7 +394,7 @@
       { title: "Used", num: true, render: function (r) { return fmtAmount(r.used, r.unit); } },
       { title: "Quota", num: true, render: function (r) { return r.quota ? fmtAmount(r.quota, r.unit) : "none"; } },
       { title: "", render: function (r) { return bar(r.used, r.quota); } },
-      { title: "%", num: true, render: function (r) { var v = pct(r.used, r.quota); return v === null ? "–" : v.toFixed(1) + "%"; } },
+      { title: "%", num: true, render: function (r) { return fmtPct(pct(r.used, r.quota)); } },
       { title: "Grace", render: function (r) { return r.grace || ""; } },
       { title: "Source", render: function (r) { return r.source; } }
     ], rows, "No quota data.");
@@ -400,11 +425,12 @@
   }
 
   function load() {
+    // Only a missing snapshot falls back to the sample; render errors are reported.
     return fetchJson(DATA_URL)
-      .then(function (d) { render(d, false); })
-      .catch(function () {
-        return fetchJson(SAMPLE_URL).then(function (d) { render(d, true); });
+      .then(function (d) { return [d, false]; }, function () {
+        return fetchJson(SAMPLE_URL).then(function (d) { return [d, true]; });
       })
+      .then(function (loaded) { render(loaded[0], loaded[1]); })
       .catch(function (err) {
         var banner = $("banner");
         banner.hidden = false;
