@@ -176,7 +176,7 @@
     (data.jobs || []).forEach(function (j) { if (j.machine) set[j.machine] = true; });
     (data.quotas || []).forEach(function (q) { if (q.machine) set[q.machine] = true; });
     Object.keys(data.sources || {}).forEach(function (s) { if (s.indexOf("ssh:") === 0) set[s.slice(4)] = true; });
-    ["aurora", "polaris", "crux"].forEach(function (m) { set[m] = true; });
+    MACHINES.forEach(function (m) { set[m] = true; });
     return Object.keys(set).sort();
   }
 

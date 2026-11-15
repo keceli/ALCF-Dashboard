@@ -9,10 +9,10 @@
   --warn: #c77700;
   --bad: #c5221f;
   --info: #1967d2;
-  /* Machines: Intel blue, NVIDIA green (Sophia a darker NVIDIA green), AMD red. */
+  /* Machines: Intel blue, NVIDIA green, Sophia yellow, AMD red. */
   --aurora: #0071c5;
   --polaris: #76b900;
-  --sophia: #3f6e00;
+  --sophia: #e0a800;
   --crux: #ed1c24;
 }
 
@@ -26,7 +26,7 @@
     --accent: #6ab0ff;
     /* Deeper green and red stay distinct and balanced on dark cards. */
     --polaris: #6caa00;
-    --sophia: #a3d65c;
+    --sophia: #f2c230;
     --crux: #d0161f;
   }
 }

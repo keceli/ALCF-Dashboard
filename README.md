@@ -3,12 +3,12 @@ ALCF dashboard to monitor usage, projects, and quota
 
 A static [GitHub Pages](https://pages.github.com/) dashboard showing your jobs,
 projects/allocations and storage quotas on the ALCF machines **Aurora**,
-**Polaris** and **Crux**.
+**Polaris**, **Sophia** and **Crux**.
 
 ```
 collector/alcf_dashboard.py  ──►  docs/data/dashboard.json  ──►  docs/ (GitHub Pages)
    ├─ ALCF IRI API (preferred)
-   └─ SSH to aurora/polaris/crux
+   └─ SSH to aurora/polaris/sophia/crux
 ```
 
 GitHub Pages only serves static files and cannot reach ALCF itself, so a small
@@ -76,7 +76,7 @@ ALCF logins require MFA, so the collector uses `ssh -o BatchMode=yes` and never
 prompts. Open a shared connection first, e.g. in `~/.ssh/config`:
 
 ```
-Host aurora.alcf.anl.gov polaris.alcf.anl.gov crux.alcf.anl.gov
+Host aurora.alcf.anl.gov polaris.alcf.anl.gov sophia.alcf.anl.gov crux.alcf.anl.gov
     User <your-alcf-username>
     ControlMaster auto
     ControlPath ~/.ssh/cm-%r@%h:%p
@@ -144,6 +144,7 @@ The same file has a `[@settings]` section for the collector itself:
 [@settings]
 aurora = aurora          ; SSH host or alias per machine, detected on first use
 polaris = polaris
+sophia = sophia
 crux = crux
 token_command = uvx alcf-tokens get-token iri   ; optional, how to get an IRI token
 ```
@@ -159,8 +160,7 @@ workflow runs with `--no-config` and never publishes a project that the
 snapshot does not already show.
 
 The dashboard marks each machine with a color: Aurora in Intel blue, Polaris in
-NVIDIA green (Sophia, which only reports environments, in a darker green) and
-Crux in AMD red.
+NVIDIA green, Sophia in yellow and Crux in AMD red.
 
 ### 4. GitHub Pages
 

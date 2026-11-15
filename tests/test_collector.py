@@ -131,7 +131,7 @@ class HelperTests(unittest.TestCase):
     def test_match_machine(self):
         self.assertEqual(ad.match_machine("Aurora", ad.DEFAULT_MACHINES), "aurora")
         self.assertEqual(ad.match_machine("polaris-compute", ad.DEFAULT_MACHINES), "polaris")
-        self.assertIsNone(ad.match_machine("sophia", ad.DEFAULT_MACHINES))
+        self.assertIsNone(ad.match_machine("sirius", ad.DEFAULT_MACHINES))
 
     def test_is_compute(self):
         # ALCF reports "supported_endpoints": [] for every resource (v1 and v2).
@@ -310,6 +310,7 @@ IRI_ROUTES = {
     ],
     # ALCF answers an empty listing with a 404 problem.
     ("POST", "/compute/status/r-polaris"): Problem(404, "No jobs found"),
+    ("POST", "/compute/status/r-sophia"): Problem(404, "No jobs found"),
     ("GET", "/account/capabilities"): [{"id": "cap-aurora", "name": "Aurora nodes"}],
     ("GET", "/account/projects"): [{"id": "MyProject", "name": "MyProject", "description": "AI"}],
     ("GET", "/account/projects/MyProject/project_allocations"): [
@@ -363,7 +364,7 @@ class IRITests(unittest.TestCase):
         self.assertEqual([r["name"] for r in status["resources"]], ["Aurora", "Polaris", "Sophia", "Eagle"])
         self.assertEqual(status["resources"][0]["type"], "compute")
         self.assertEqual([i["id"] for i in status["incidents"]], ["i1"])
-        # Polaris has no jobs (404 "No jobs found") and Sophia is not requested.
+        # Polaris and Sophia have no jobs (404 "No jobs found").
         self.assertEqual(len(jobs["jobs"]), 1)
         job = jobs["jobs"][0]
         self.assertEqual((job["machine"], job["id"], job["state"], job["queue"], job["project"], job["source"]),
@@ -378,7 +379,7 @@ class IRITests(unittest.TestCase):
         self.assertIn("time=", fake.find("GET", "/status/incidents")[0].full_url)
         posts = fake.find("POST", "/compute/status/")
         self.assertEqual(sorted(p.full_url.split("?")[0].rsplit("/", 1)[1] for p in posts),
-                         ["r-aurora", "r-polaris"])
+                         ["r-aurora", "r-polaris", "r-sophia"])
         self.assertNotIn("include_spec", posts[0].full_url)  # ALCF answers it with HTTP 501
         # By login name: without the filter ALCF lists everyone's jobs.
         self.assertEqual(json.loads(posts[0].data), {"owner": "alice"})
@@ -702,21 +703,21 @@ class ConfigTests(unittest.TestCase):
 
     def test_ssh_hosts_are_detected_and_remembered(self):
         calls, config = self.run_ssh(None)
-        self.assertEqual(calls, ["aurora", "polaris.alcf.anl.gov", "crux"])
+        self.assertEqual(calls, ["aurora", "polaris.alcf.anl.gov", "sophia.alcf.anl.gov", "crux"])
         self.assertIn("[@settings]\n", config)
-        self.assertIn("aurora = aurora\npolaris = polaris.alcf.anl.gov\ncrux = crux\n", config)
+        self.assertIn("aurora = aurora\npolaris = polaris.alcf.anl.gov\nsophia = sophia.alcf.anl.gov\ncrux = crux\n", config)
         self.assertIn("# token_command = ", config)
         # Later runs read them instead of detecting again, even if ~/.ssh/config changes.
         self.detect.reset_mock()
         calls, again = self.run_ssh(config)
-        self.assertEqual((calls, again), (["aurora", "polaris.alcf.anl.gov", "crux"], config))
+        self.assertEqual((calls, again), (["aurora", "polaris.alcf.anl.gov", "sophia.alcf.anl.gov", "crux"], config))
         self.detect.assert_not_called()
 
     def test_settings_are_added_to_an_existing_config(self):
         calls, config = self.run_ssh("[Catalyst]\nallocations = 1\n")
         self.assertTrue(config.startswith("[Catalyst]\nallocations = 1\n"))
         self.assertIn("[@settings]", config)
-        self.assertEqual(calls, ["aurora", "polaris.alcf.anl.gov", "crux"])
+        self.assertEqual(calls, ["aurora", "polaris.alcf.anl.gov", "sophia.alcf.anl.gov", "crux"])
 
     def test_command_line_overrides_settings(self):
         settings = "[@settings]\naurora = login.example\ncrux = crux\n"

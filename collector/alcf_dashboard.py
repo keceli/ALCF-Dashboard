@@ -34,7 +34,7 @@ import urllib.request
 
 SCHEMA_VERSION = 1
 DEFAULT_IRI_URL = "https://api.alcf.anl.gov/api/v2"
-DEFAULT_MACHINES = ("aurora", "polaris", "crux")
+DEFAULT_MACHINES = ("aurora", "polaris", "sophia", "crux")
 DEFAULT_OUTPUT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, "docs", "data", "dashboard.json"
 )
