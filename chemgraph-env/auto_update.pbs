@@ -1,17 +1,13 @@
 #!/bin/bash
 #PBS -N chemgraph_auto_update
-#PBS -A ChemGraph
-#PBS -q debug
-#PBS -l select=1
-#PBS -l walltime=01:00:00
-#PBS -l filesystems=home:flare
-#PBS -o /lus/flare/projects/catalyst/world_shared/chemgraph/test_results/auto_update.pbs.out
 #PBS -j oe
 # ===========================================================================
-# PBS wrapper that runs auto_update.sh on a compute node (proxy for pip + PVC
-# GPU for verify). Submitted by trigger_auto_update.sh. Env knobs (TRACK_MODE,
-# ON_FAIL, FORCE, CHEMGRAPH_EXTRAS) pass through via `qsub -v`.
+# PBS wrapper that runs auto_update.sh on a compute node (proxy for pip + the
+# GPU for verify). Submitted by trigger_auto_update.sh, which passes the
+# machine's account, queue and resources from machine.conf on the qsub command
+# line. Env knobs (TRACK_MODE, ON_FAIL, FORCE, CHEMGRAPH_EXTRAS) pass through
+# via `qsub -v`.
 # ===========================================================================
-cd /lus/flare/projects/catalyst/world_shared/chemgraph
+cd "$PBS_O_WORKDIR" || exit 1
 bash auto_update.sh
 echo "auto_update.pbs finished rc=$? at $(date)"

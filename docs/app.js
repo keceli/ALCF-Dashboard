@@ -43,7 +43,7 @@
   function badge(value) { return h("span", { "class": "badge " + cssToken(value), text: value || "unknown" }); }
 
   // Colored in style.css: Aurora Intel blue, Polaris NVIDIA green, Crux AMD red.
-  var MACHINES = ["aurora", "polaris", "crux"];
+  var MACHINES = ["aurora", "polaris", "sophia", "crux"];
 
   function machineKey(name) {
     var lower = String(name || "").toLowerCase();
@@ -55,7 +55,12 @@
     if (!name) return "–";
     var text = String(name);
     return h("span", { "class": "machine " + (machineKey(text) || "other"),
-      text: text.charAt(0).toUpperCase() + text.slice(1) });
+      text: cap(text) });
+  }
+
+  function cap(text) {
+    text = String(text);
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
   function fmtNumber(n, digits) {
@@ -353,10 +358,13 @@
       var when = e.generated_at || au.time;
       el.appendChild(h("div", { "class": "card env" + (mk ? " machine-" + mk : "") },
         h("div", { "class": "label" },
-          h("span", { "class": "machine " + (mk || "other"), text: e.name || e.machine || "env" }),
+          h("span", { "class": "machine " + (mk || "other"),
+            text: [e.name, e.machine && e.machine !== e.name ? cap(e.machine) : null]
+              .filter(Boolean).join(" · ") || "env" }),
           au.result ? [" ", statusBadge(au.result)] : null),
         e.path ? h("div", { "class": "detail path" }, h("code", { text: e.path })) : null,
-        e.backend ? h("div", { "class": "detail", text: "backend: " + e.backend }) : null,
+        e.backend ? h("div", { "class": "detail", text: "backend: " + e.backend +
+          (e.manager ? " · " + e.manager : "") }) : null,
         verParts.length ? h("div", { "class": "detail vers", text: verParts.join(" · ") }) : null,
         gitParts.length ? h("div", { "class": "detail", text: "git: " + gitParts.join(" · ") }) : null,
         pytest ? h("div", { "class": "detail muted", text: pytest }) : null,

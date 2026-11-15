@@ -492,6 +492,24 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(merged["sources"][ad.IRI_ACCOUNT]["last_success"], "t0")
         self.assertFalse(merged["sources"][ad.IRI_ACCOUNT]["ok"])
 
+    def test_shared_home_environments_are_listed_once(self):
+        # Polaris and Crux share /home: both report the Sophia file. When Polaris
+        # fails, its old copies are kept but the fresh Crux copies win.
+        old = ad.empty_snapshot()
+        old["sources"] = {"ssh:polaris": {"ok": True}, "ssh:crux": {"ok": True}}
+        old["environments"] = [
+            {"name": "ChemGraph", "machine": "sophia", "v": "old", "source": "ssh:polaris"},
+            {"name": "ChemGraph", "machine": "polaris", "v": "old", "source": "ssh:polaris"}]
+        new = ad.empty_snapshot()
+        new["sources"] = {"ssh:polaris": {"ok": False}, "ssh:crux": {"ok": True}}
+        new["environments"] = [
+            {"name": "ChemGraph", "machine": "sophia", "v": "new", "source": "ssh:crux"},
+            {"name": "ChemGraph", "machine": "Polaris", "v": "new", "source": "ssh:crux"},
+            {"name": "ChemGraph", "machine": "crux", "v": "new", "source": "ssh:crux"}]
+        envs = ad.dedupe_environments(ad.merge_snapshots(new, old)["environments"])
+        self.assertEqual([(e["machine"].lower(), e["v"]) for e in envs],
+                         [("sophia", "new"), ("polaris", "new"), ("crux", "new")])
+
 
 FAKE_HOSTS = {"aurora": "aurora", "polaris": "polaris.alcf.anl.gov", "crux": "crux"}
 

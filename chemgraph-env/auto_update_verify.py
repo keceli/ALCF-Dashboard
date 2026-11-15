@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-# Core verify for auto_update.sh: imports + XPU device + the three calculators.
-# Exits non-zero on any import failure, missing XPU, or a calculator result that
-# is wildly off. (pytest suites are run separately by auto_update.sh.)
-import importlib, sys
+# Core verify for auto_update.sh: imports + the machine's torch device + two
+# calculators. DEVICE (cuda|xpu|cpu, from machine.conf) selects the device check.
+# Exits non-zero on any import failure, missing device, or a calculator result
+# that is wildly off. (pytest suites are run separately by auto_update.sh.)
+import importlib, os, sys
 
 bad = []
 for m in ["numpy","ase","rdkit","pymatgen","mace","tblite.ase","pyscf","chemgraph","iqc","mpi4py"]:
@@ -15,13 +16,20 @@ if bad:
     sys.exit(1)
 
 import numpy, torch
-print("numpy", numpy.__version__, "| torch", torch.__version__, "| cuda", torch.version.cuda)
-if numpy.__version__ != "1.26.4":
-    print("WARN: numpy is not 1.26.4")
-if not (getattr(torch, "xpu", None) and torch.xpu.is_available()):
-    print("XPU NOT AVAILABLE"); sys.exit(1)
-print("xpu tiles:", torch.xpu.device_count())
-_ = torch.ones(8, device="xpu").sum().item()
+device = os.environ.get("DEVICE", "cpu")
+print("numpy", numpy.__version__, "| torch", torch.__version__, "| device", device)
+pin = os.environ.get("NUMPY_PIN")
+if pin and numpy.__version__ != pin:
+    print("WARN: numpy is not", pin)
+if device == "xpu":
+    if not (getattr(torch, "xpu", None) and torch.xpu.is_available()):
+        print("XPU NOT AVAILABLE"); sys.exit(1)
+    print("xpu tiles:", torch.xpu.device_count())
+elif device == "cuda":
+    if not torch.cuda.is_available():
+        print("CUDA NOT AVAILABLE"); sys.exit(1)
+    print("cuda devices:", torch.cuda.device_count(), torch.cuda.get_device_name(0))
+_ = torch.ones(8, device=device).sum().item()
 
 from ase.build import molecule
 from tblite.ase import TBLite

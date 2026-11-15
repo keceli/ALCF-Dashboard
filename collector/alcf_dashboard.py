@@ -671,6 +671,19 @@ def parse_environments(text, machine):
     return envs
 
 
+def dedupe_environments(envs):
+    """Keep the first environment per (machine, name). Machines that share a home
+    directory (Polaris, Sophia, Crux) all report every ~/.alcf-dashboard/envs file;
+    each file names its machine, and the freshest copy comes first."""
+    seen, out = set(), []
+    for env in envs:
+        key = (str(env.get("machine") or "").lower(), str(env.get("name") or "").lower())
+        if key not in seen:
+            seen.add(key)
+            out.append(env)
+    return out
+
+
 def collect_ssh(machine, host, ssh_command="ssh", timeout=120, run=subprocess.run):
     """Run :data:`SSH_SCRIPT` on ``host`` and parse jobs, quotas and environments."""
     cmd = shlex.split(ssh_command) + [
@@ -999,6 +1012,7 @@ def main(argv=None):
             add_source(snap, name, records, errors, ok, url=args.iri_url)
 
     snap = merge_snapshots(snap, previous)
+    snap["environments"] = dedupe_environments(snap["environments"])
 
     # Publish only what the config allows.  Without one (in CI), publish only
     # what the previous snapshot already showed.

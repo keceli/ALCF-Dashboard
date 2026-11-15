@@ -1,14 +1,22 @@
-# ChemGraph shared environment — ALCF Aurora
+# ChemGraph shared environments — ALCF Aurora, Polaris, Sophia, Crux
 
-Scripts and operating instructions for the **shared [ChemGraph](https://github.com/Autonomous-Scientific-Agents/ChemGraph)
-conda environment on ALCF Aurora** (Intel Data Center GPU Max / Ponte Vecchio; PyTorch on the
-**Intel XPU** backend). This folder mirrors what is deployed at:
+Scripts and operating instructions for the **shared [ChemGraph](https://github.com/argonne-lcf/ChemGraph)
+environments on ALCF machines**. One set of update scripts serves all of them; each machine's
+paths, torch build and PBS settings are in [`machines/<machine>.conf`](machines/):
 
-```
-/lus/flare/projects/catalyst/world_shared/chemgraph/
-```
+| Machine | Hardware | Env | torch | Shared directory | PBS account |
+|---|---|---|---|---|---|
+| Aurora | Intel PVC (XPU) | conda | 2.12.1+xpu | `/lus/flare/projects/catalyst/world_shared/chemgraph` | ChemGraph |
+| Polaris | 4× NVIDIA A100 | conda | 2.13.0 (CUDA) | `/grand/catalyst/world-shared/chemgraph` | ChemGraph |
+| Sophia | 8× NVIDIA A100 (DGX) | uv | 2.13.0+cu126 | `/grand/catalyst/world-shared/chemgraph/sophia` | ChemGraph |
+| Crux | AMD EPYC, no GPU | uv | 2.13.0+cpu | `/grand/catalyst/world-shared/chemgraph/crux` | Catalyst |
 
-Its live status (path, package versions, last auto-update result) is published on the
+Activate with `source <shared directory>/activate_chemgraph.sh`. Sophia and Crux are uv venvs
+(Python 3.11 managed by uv under `/grand/catalyst/world-shared/chemgraph/uv`); they have no
+nwchem, which is conda-only. The rest of this page documents the Aurora build in detail; the
+Polaris build is documented in its shared directory (`BUILD_NOTES.md`).
+
+Each env's live status (path, package versions, last auto-update result) is published on the
 **ALCF Dashboard** in this repo — see [Dashboard integration](#dashboard-integration) below.
 
 ---
@@ -44,11 +52,16 @@ The authoritative current versions are in the dashboard / `test_results/env_stat
 | `constraints.txt` | pip constraint `torch==2.12.1+xpu` (guards every pip call vs. a CUDA wheel) |
 | `probe_xpu.pbs` | finds which pip torch-xpu wheel actually imports + sees the PVC on a compute node |
 | `test_env.pbs` | compute-node verification: imports + XPU + tblite/pyscf/nwchem + ChemGraph/IQC pytest |
+| `machines/*.conf` | per-machine settings (paths, conda or uv, torch, device, PBS); deployed as `machine.conf` |
+| `cg_common.sh` | helpers shared by the scripts below (activation, `pip`/`uv pip`, torch gate) |
 | `auto_update.sh` | **safe auto-updater**: detect new upstream → install → verify → promote or roll back |
-| `auto_update_verify.py` | core verify (imports + XPU + calculators) used by `auto_update.sh` |
+| `auto_update_verify.py` | core verify (imports + the machine's torch device + calculators) used by `auto_update.sh` |
 | `auto_update.pbs` | PBS wrapper that runs `auto_update.sh` on a compute node |
-| `trigger_auto_update.sh` | login-node entry point your off-site cron SSHes to (submits the job, dedupes) |
+| `trigger_auto_update.sh` | login-node entry point: submits the job only when ChemGraph or IQC changed |
 | `env_status.sh` | writes `env_status.json` (path + versions + git + auto-update status) for the dashboard |
+| `build_env_uv.sh` | builds a uv env (Sophia, Crux): torch first, guarded install, numpy re-pin |
+| `deploy.sh` | copies the scripts and `machines/<m>.conf` to a machine's shared directory |
+| `cron_trigger.sh` | runs `trigger_auto_update.sh` over SSH; called from a workstation cron |
 | `PORTABLE_INSTALL.md` | cross-hardware build guide (NVIDIA/Intel/AMD/CPU) this Aurora build follows |
 
 > These scripts contain the absolute Aurora deployment path and the Aurora `frameworks`
@@ -90,28 +103,40 @@ Config via env vars (passed through by `trigger_auto_update.sh`):
 `TRACK_MODE=main|release` (default `main` = follow `origin/main`), `ON_FAIL=rollback|keep`,
 `CHEMGRAPH_EXTRAS=parsl,ensemble_launcher,test`, `FORCE=1`.
 
-### Scheduling from an off-site machine (recommended)
-ALCF has **no user cron** on Aurora, so the durable scheduler lives on a machine you control
-(laptop/workstation/VM) that can SSH to Aurora:
+`trigger_auto_update.sh` runs on a login node and is cheap: it fetches ChemGraph and IQC and
+submits `auto_update.pbs` with the account, queue and resources from `machine.conf` only when
+one of them has a new commit. A target that failed verification (and was rolled back) is not
+resubmitted until a newer commit lands, so a broken upstream commit costs one job, not one per
+hour. `FORCE=1 bash trigger_auto_update.sh` runs a full verify anyway, e.g. after a build.
 
-```sshconfig
-# ~/.ssh/config — persistent master so cron skips the ALCF MFA prompt
-Host aurora
-    HostName aurora.alcf.anl.gov
-    User <your_alcf_user>
-    ControlMaster auto
-    ControlPath ~/.ssh/cm-%r@%h:%p
-    ControlPersist 168h
-```
+### Scheduling from an off-site machine
+ALCF has **no user cron**, so the scheduler lives on a machine you control that can SSH to
+ALCF. Open a shared connection per machine (one MFA each; `ControlPersist` decides how long
+it lasts), then call `cron_trigger.sh` from cron, staggered:
+
 ```bash
-ssh -fN aurora          # authenticate once (MFA); cron reuses this socket
+ssh -fN aurora; ssh -fN polaris; ssh -fN sophia; ssh -fN crux
 ```
 ```cron
-17 7 * * *  ssh aurora 'bash /lus/flare/projects/catalyst/world_shared/chemgraph/trigger_auto_update.sh' >> ~/chemgraph_autoupdate.log 2>&1
+17 * * * * /path/to/ALCF-Dashboard/chemgraph-env/cron_trigger.sh aurora  >> ~/chemgraph_autoupdate.log 2>&1
+23 * * * * /path/to/ALCF-Dashboard/chemgraph-env/cron_trigger.sh polaris >> ~/chemgraph_autoupdate.log 2>&1
+37 * * * * /path/to/ALCF-Dashboard/chemgraph-env/cron_trigger.sh sophia  >> ~/chemgraph_autoupdate.log 2>&1
+43 * * * * /path/to/ALCF-Dashboard/chemgraph-env/cron_trigger.sh crux    >> ~/chemgraph_autoupdate.log 2>&1
 ```
-Re-run `ssh -fN aurora` after the master expires or the machine reboots. (A self-resubmitting
-PBS chain is *not* recommended — PBS queue limits silently break it; ALCF **GitLab CI scheduled
-pipelines** are the heavier ALCF-native alternative.)
+The SSH host is the machine name (an `~/.ssh/config` alias). When a connection has expired the
+log says so; re-run `ssh -fN <machine>`.
+
+### Changing the scripts
+Edit them here and run `./deploy.sh aurora polaris sophia crux`; it overwrites the scripts and
+`machine.conf` in each shared directory but not the activate scripts or the envs.
+
+### Building the uv envs (Sophia, Crux)
+```bash
+./deploy.sh sophia
+ssh sophia 'bash /grand/catalyst/world-shared/chemgraph/sophia/build_env_uv.sh' \
+  > build.log 2>&1      # login node; ~10 minutes
+ssh sophia 'FORCE=1 bash /grand/catalyst/world-shared/chemgraph/sophia/trigger_auto_update.sh'
+```
 
 ---
 
@@ -119,6 +144,8 @@ pipelines** are the heavier ALCF-native alternative.)
 
 The ALCF Dashboard collector reads **`~/.alcf-dashboard/envs/*.json`** over SSH and renders an
 **Environments** card showing each env's path, versions, git SHAs, and latest auto-update status.
-`env_status.sh` writes this file (and a world-readable copy at `test_results/env_status.json`);
+`env_status.sh` writes `chemgraph-<machine>.json` there (and a world-readable copy at
+`test_results/env_status.json`). Polaris, Sophia and Crux share `/home`, so each machine's file
+names its machine and the dashboard lists every env once;
 `auto_update.sh` calls it on every run, so the dashboard reflects the live state. To register a
 different env, drop its own `env_status.json` into `~/.alcf-dashboard/envs/` on the target machine.
