@@ -83,8 +83,11 @@ Host aurora.alcf.anl.gov polaris.alcf.anl.gov crux.alcf.anl.gov
 
 then authenticate once per machine with `ssh -fN aurora.alcf.anl.gov` (etc.).
 `ControlPersist` has to outlast the time between updates. If your SSH config
-uses short aliases (`Host aurora`), pass `--ssh-host aurora=aurora` (etc.) so
-that their connections are reused. Use `--ssh-user` to set the user,
+has short aliases (`Host aurora`), the first run detects them and saves the
+host to use for each machine in the `[@settings]` section of `dashboard.ini`
+(see below), so their connections are reused on every run. Edit that section,
+or pass `--ssh-host aurora=myalias` for one run, to change them. Use
+`--ssh-user` to set the user,
 `--machines aurora,polaris` to limit machines and `--no-ssh` to disable SSH
 entirely.
 
@@ -97,7 +100,7 @@ scripts/update_dashboard.sh --push         # collect and publish
 ```
 
 Collector options go after `--`, e.g.
-`scripts/update_dashboard.sh --push -- --ssh-host aurora=aurora --machines aurora,crux`.
+`scripts/update_dashboard.sh --push -- --machines aurora,crux`.
 Each run is merged with the previous snapshot, so a source that fails keeps its
 last good data. `--push` force-pushes the snapshot as the only commit of the
 `dashboard-data` branch, so history does not grow and your checkout is never
@@ -132,6 +135,18 @@ jobs = 0          ; jobs charged to the project
 [<your username>]
 quotas = 1        ; your home directories
 ```
+
+The same file has a `[@settings]` section for the collector itself:
+
+```ini
+[@settings]
+aurora = aurora          ; SSH host or alias per machine, detected on first use
+polaris = polaris
+crux = crux
+token_command = uvx alcf-tokens get-token iri   ; optional, how to get an IRI token
+```
+
+Command-line options (`--ssh-host`, `--token-command`) take precedence.
 
 Set the options you want to 1 and run the update again. Projects found later
 are appended, hidden. Names match case-insensitively, and the file is
