@@ -493,7 +493,20 @@ class MergeTests(unittest.TestCase):
         self.assertFalse(merged["sources"][ad.IRI_ACCOUNT]["ok"])
 
 
+FAKE_HOSTS = {"aurora": "aurora", "polaris": "polaris.alcf.anl.gov", "crux": "crux"}
+
+
+def patch_ssh_detection(test):
+    patcher = unittest.mock.patch.object(ad, "detect_ssh_hosts", side_effect=lambda machines, *_: {
+        m: FAKE_HOSTS.get(m, m + ".alcf.anl.gov") for m in machines})
+    test.detect = patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 class MainTests(unittest.TestCase):
+    def setUp(self):
+        patch_ssh_detection(self)
+
     def test_main_without_sources_writes_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "out", "dashboard.json")
@@ -580,6 +593,9 @@ class MainTests(unittest.TestCase):
 class ConfigTests(unittest.TestCase):
     """Choosing what to publish in dashboard.ini."""
 
+    def setUp(self):
+        patch_ssh_detection(self)
+
     @staticmethod
     def snapshot():
         snap = ad.empty_snapshot()
@@ -612,7 +628,7 @@ class ConfigTests(unittest.TestCase):
             snap, config, output = self.publish(tmp)
         self.assertEqual((snap["projects"], snap["quotas"], snap["jobs"]), ([], [], []))
         self.assertIn("created", output)
-        self.assertEqual(re.findall(r"^\[(.+)\]$", config, re.M), ["alice", "Catalyst", "Other"])
+        self.assertEqual(re.findall(r"^\[([^@].*)\]$", config, re.M), ["alice", "Catalyst", "Other"])
         self.assertNotIn("= 1", config)
         self.assertIn("[Catalyst]\nallocations = 0\nquotas = 0\njobs = 0\n", config)
         self.assertIn("[alice]\nquotas = 0\n\n", config)  # your home directories
@@ -630,7 +646,7 @@ class ConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             snap, text, output = self.publish(tmp, config)
         self.assertTrue(text.startswith(config))  # your edits and comments stay
-        self.assertEqual(re.findall(r"^\[(.+)\]$", text, re.M), ["Catalyst", "alice", "Other"])
+        self.assertEqual(re.findall(r"^\[([^@].*)\]$", text, re.M), ["Catalyst", "alice", "Other"])
         self.assertNotIn("= 1", text[len(config):])
         self.assertIn("added 2 new projects", output)
         self.assertEqual([p["name"] for p in snap["projects"]], ["Catalyst"])
@@ -646,6 +662,79 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "cannot read"):
                 self.publish(tmp, "allocations = 1\n")  # no [project] header
             self.assertFalse(os.path.exists(os.path.join(tmp, "out.json")))
+
+    def run_ssh(self, config, *args):
+        """Run the collector over (fake) SSH; return the hosts it connected to and the config."""
+        calls = []
+
+        def fake_collect(machine, host, *rest):
+            calls.append(host)
+            raise RuntimeError("offline")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "dashboard.ini")
+            if config is not None:
+                with open(path, "w") as fh:
+                    fh.write(config)
+            with unittest.mock.patch.object(ad, "collect_ssh", side_effect=fake_collect), \
+                    unittest.mock.patch("sys.stdout", io.StringIO()):
+                ad.main(["--no-iri", "-o", os.path.join(tmp, "out.json"), "--config", path, *args])
+            with open(path) as fh:
+                return calls, fh.read()
+
+    def test_ssh_hosts_are_detected_and_remembered(self):
+        calls, config = self.run_ssh(None)
+        self.assertEqual(calls, ["aurora", "polaris.alcf.anl.gov", "crux"])
+        self.assertIn("[@settings]\n", config)
+        self.assertIn("aurora = aurora\npolaris = polaris.alcf.anl.gov\ncrux = crux\n", config)
+        self.assertIn("# token_command = ", config)
+        # Later runs read them instead of detecting again, even if ~/.ssh/config changes.
+        self.detect.reset_mock()
+        calls, again = self.run_ssh(config)
+        self.assertEqual((calls, again), (["aurora", "polaris.alcf.anl.gov", "crux"], config))
+        self.detect.assert_not_called()
+
+    def test_settings_are_added_to_an_existing_config(self):
+        calls, config = self.run_ssh("[Catalyst]\nallocations = 1\n")
+        self.assertTrue(config.startswith("[Catalyst]\nallocations = 1\n"))
+        self.assertIn("[@settings]", config)
+        self.assertEqual(calls, ["aurora", "polaris.alcf.anl.gov", "crux"])
+
+    def test_command_line_overrides_settings(self):
+        settings = "[@settings]\naurora = login.example\ncrux = crux\n"
+        calls, _ = self.run_ssh(settings, "--ssh-host", "crux=other", "--machines", "aurora,crux")
+        self.assertEqual(calls, ["login.example", "other"])
+
+    def test_token_command_from_settings(self):
+        command = shlex.quote(sys.executable) + " -c \"print('tok-from-settings')\""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "dashboard.ini")
+            with open(path, "w") as fh:
+                fh.write(f"[@settings]\ntoken_command = {command}\n")
+            fake = FakeIRI(IRI_ROUTES)
+            with unittest.mock.patch("urllib.request.urlopen", fake), unittest.mock.patch("time.sleep"), \
+                    unittest.mock.patch.dict(os.environ, {}), unittest.mock.patch("sys.stdout", io.StringIO()):
+                os.environ.pop("ALCF_IRI_TOKEN", None)
+                ad.main(["--no-ssh", "--iri-url", "https://iri.test/api/v2", "--user", "alice",
+                         "-o", os.path.join(tmp, "out.json"), "--config", path])
+        self.assertEqual(fake.find("GET", "/account/projects")[0].get_header("Authorization"),
+                         "Bearer tok-from-settings")
+
+
+class SSHDetectionTests(unittest.TestCase):
+    def test_alias_or_default(self):
+        def fake_run(cmd, **kwargs):
+            names = {"aurora": "login.aurora.alcf.anl.gov", "crux": "crux.alcf.anl.gov", "polaris": "polaris"}
+            return subprocess.CompletedProcess(cmd, 0, f"user keceli\nhostname {names[cmd[-1]]}\nport 22\n", "")
+
+        self.assertEqual(ad.detect_ssh_hosts(["aurora", "polaris", "crux"], run=fake_run),
+                         {"aurora": "aurora", "polaris": "polaris.alcf.anl.gov", "crux": "crux"})
+
+    def test_missing_ssh_falls_back_to_default(self):
+        def fake_run(cmd, **kwargs):
+            raise OSError("no ssh")
+
+        self.assertEqual(ad.detect_ssh_hosts(["crux"], run=fake_run), {"crux": "crux.alcf.anl.gov"})
 
 
 if __name__ == "__main__":

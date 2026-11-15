@@ -42,6 +42,17 @@ LIST_KEYS = ("resources", "incidents", "jobs", "projects", "quotas", "environmen
 DEFAULT_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "dashboard.ini")
 # What each project in the config can publish (see update_config).
 VISIBILITY_KINDS = ("allocations", "quotas", "jobs")
+# Collector settings in the config; "@" keeps it apart from project names.
+SETTINGS_SECTION = "@settings"
+SETTINGS_TEMPLATE = """\
+[@settings]
+# SSH host or alias for each machine.  The collector never prompts for MFA, so
+# this must reach an open connection: use the Host alias your ~/.ssh/config
+# keeps a ControlMaster for.  Detected when this section was written.
+{hosts}
+# Command printing an IRI access token (default: alcf-tokens get-token iri).
+{token}
+"""
 CONFIG_HEADER = """\
 # Which projects appear on the dashboard.  Everything starts hidden: set an
 # option to 1 to publish it and run the collector again.  Projects found
@@ -775,6 +786,8 @@ def read_config(path):
         raise SystemExit(f"[config] cannot read {path}: {exc}")
     shown, listed = set(), set()
     for section in parser.sections():
+        if section.startswith("@"):
+            continue
         listed.add(section.lower())
         for kind in VISIBILITY_KINDS:
             try:
@@ -803,8 +816,56 @@ def update_config(path, names, user):
         kinds = ("quotas",) if user and key == user.lower() else VISIBILITY_KINDS
         lines += [f"[{new[key]}]"] + [f"{kind} = 0" for kind in kinds] + [""]
     with open(path, "a" if exists else "w", encoding="utf-8") as fh:
-        fh.write((f"\n# Added {utcnow()[:10]}\n" if exists else CONFIG_HEADER + "\n") + "\n".join(lines))
+        intro = (f"\n# Added {utcnow()[:10]}\n" if listed else "") if exists else CONFIG_HEADER + "\n"
+        fh.write(intro + "\n".join(lines))
     return len(new)
+
+
+def detect_ssh_hosts(machines, ssh_command="ssh", run=subprocess.run):
+    """Map each machine to a Host alias from ~/.ssh/config if there is one (``ssh -G``
+    resolves it to another host name), else to ``MACHINE.alcf.anl.gov``."""
+    hosts = {}
+    for machine in machines:
+        hostname = None
+        try:
+            proc = run(shlex.split(ssh_command) + ["-G", machine], stdout=subprocess.PIPE,
+                       stderr=subprocess.DEVNULL, universal_newlines=True, timeout=10)
+            hostname = next((line.split(None, 1)[1].strip() for line in proc.stdout.splitlines()
+                             if line.startswith("hostname ")), None)
+        except (OSError, subprocess.TimeoutExpired, IndexError):
+            pass
+        hosts[machine] = machine if hostname and hostname != machine else f"{machine}.alcf.anl.gov"
+    return hosts
+
+
+def read_settings(path):
+    """Return ``(found, hosts, token_command)`` from the config's settings section."""
+    parser = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#", ";"))
+    try:
+        parser.read(path, encoding="utf-8")
+    except configparser.Error as exc:
+        raise SystemExit(f"[config] cannot read {path}: {exc}")
+    if not parser.has_section(SETTINGS_SECTION):
+        return False, {}, None
+    values = dict(parser.items(SETTINGS_SECTION))
+    token_command = values.pop("token_command", None) or None
+    return True, {k.lower(): v for k, v in values.items() if v}, token_command
+
+
+def ensure_settings(path, machines, ssh_command="ssh"):
+    """Write the settings section, with detected SSH hosts, if the config has none."""
+    found, hosts, token_command = read_settings(path) if os.path.exists(path) else (False, {}, None)
+    if found:
+        return hosts, token_command
+    hosts = detect_ssh_hosts(machines, ssh_command)
+    section = SETTINGS_TEMPLATE.format(
+        hosts="\n".join(f"{m} = {h}" for m, h in hosts.items()),
+        token="# token_command = uvx alcf-tokens get-token iri")
+    exists = os.path.exists(path)
+    with open(path, "a" if exists else "w", encoding="utf-8") as fh:
+        fh.write(("\n" if exists else CONFIG_HEADER + "\n") + section + "\n")
+    print(f"[config] wrote SSH hosts to {path}: " + ", ".join(f"{m}={h}" for m, h in hosts.items()))
+    return hosts, None
 
 
 def filter_snapshot(snap, shown):
@@ -863,7 +924,8 @@ def build_parser():
     s.add_argument("--ssh-command", default="ssh", help="ssh executable and options (default: %(default)s)")
     s.add_argument("--ssh-user", help="username for SSH (default: from ~/.ssh/config)")
     s.add_argument("--ssh-host", action="append", metavar="MACHINE=HOST",
-                   help="override the SSH host for a machine (default: MACHINE.alcf.anl.gov)")
+                   help="override the SSH host for a machine (default: from the config's [@settings], "
+                        "else MACHINE.alcf.anl.gov)")
     s.add_argument("--ssh-timeout", type=int, default=120, help="seconds per machine (default: %(default)s)")
     return p
 
@@ -882,7 +944,14 @@ def add_source(snap, name, records, errors, ok, **extra):
 def main(argv=None):
     args = build_parser().parse_args(argv)
     machines = [m.strip().lower() for m in args.machines.split(",") if m.strip()]
-    hosts = parse_host_overrides(args.ssh_host)
+    # SSH hosts and the token command: the command line, then the config's
+    # settings (written on first use), then the defaults.
+    created = not args.no_config and not os.path.exists(args.config)
+    hosts = {}
+    if not args.no_config:
+        hosts, token_command = ensure_settings(args.config, machines, args.ssh_command)
+        args.token_command = args.token_command or token_command
+    hosts.update(parse_host_overrides(args.ssh_host))
     previous = read_snapshot(args.merge)
     snap = empty_snapshot()
     snap["user"] = args.user
@@ -937,7 +1006,6 @@ def main(argv=None):
         before = snapshot_names(previous or empty_snapshot())
         shown = {(name.lower(), kind) for kind, names in before.items() for name in names}
     else:
-        created = not os.path.exists(args.config)
         added = update_config(args.config, snapshot_names(snap), snap["user"])
         if created:
             print(f"[config] created {args.config} with {added} projects, all hidden: "
