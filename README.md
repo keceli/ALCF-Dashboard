@@ -25,6 +25,14 @@ nodes' `/usr/bin/python3`) writes a JSON snapshot that the page renders. If
 | Jobs | `POST /compute/status/{resource}`, filtered to your jobs | `qselect -u $USER` + `qstat -f -F json` |
 | Projects & allocations (node-hours) | `GET /account/projects`, `.../project_allocations`, `.../user_allocations` | – |
 | Storage quotas | storage (bytes/inodes) project allocations | `myquota`, `myprojectquotas` |
+| Environments (optional) | – | `cat ~/.alcf-dashboard/envs/*.json` |
+
+The optional **Environments** card shows the status of software environments you maintain
+(path, package versions, git SHAs, and a self-reported status). Any machine that the
+collector reaches over SSH can publish one or more environments by writing a small JSON file
+into `~/.alcf-dashboard/envs/` on that host; the file is rendered verbatim. See
+[`chemgraph-env/`](chemgraph-env/) for a worked example (a shared ChemGraph conda env on
+Aurora that refreshes its own `env_status.json` on every auto-update).
 
 Every source is optional and failures are isolated: when a source fails (an
 expired token, an SSH host without an open connection, ...) the dashboard keeps

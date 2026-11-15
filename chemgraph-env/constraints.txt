@@ -1,0 +1,2 @@
+# auto-written by build_env_aurora.sh -- torch-only (see script step 2 comment)
+torch==2.12.1+xpu

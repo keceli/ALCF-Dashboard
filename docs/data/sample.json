@@ -266,6 +266,35 @@
    "source": "iri:account"
   }
  ],
+ "environments": [
+  {
+   "name": "ChemGraph",
+   "machine": "aurora",
+   "path": "/lus/flare/projects/DemoProj/shared/chemgraph/alcf_chemgraph_env",
+   "activate": "source /lus/flare/projects/DemoProj/shared/chemgraph/activate_chemgraph.sh",
+   "backend": "Intel XPU (PVC)",
+   "versions": {
+    "python": "3.11.16",
+    "torch": "2.12.1+xpu",
+    "numpy": "1.26.4",
+    "chemgraph": "0.7.0",
+    "iqc": "0.1.0",
+    "mace-torch": "0.3.16",
+    "tblite": "0.7.0",
+    "pyscf": "2.14.0"
+   },
+   "git": { "ChemGraph": "v0.7.0-230-g2370136a", "IQC": "26eb658" },
+   "auto_update": {
+    "result": "updated_ok",
+    "time": "2026-10-30 09:00:00 CST",
+    "chemgraph_pytest": "2254 passed, 32 skipped",
+    "iqc_pytest": "487 passed, 28 skipped",
+    "track_mode": "main"
+   },
+   "generated_at": "2026-10-30T15:00:00+00:00",
+   "source": "ssh:aurora"
+  }
+ ],
  "quotas": [
   {
    "machine": "aurora",

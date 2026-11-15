@@ -38,7 +38,7 @@ DEFAULT_MACHINES = ("aurora", "polaris", "crux")
 DEFAULT_OUTPUT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, "docs", "data", "dashboard.json"
 )
-LIST_KEYS = ("resources", "incidents", "jobs", "projects", "quotas")
+LIST_KEYS = ("resources", "incidents", "jobs", "projects", "quotas", "environments")
 DEFAULT_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "dashboard.ini")
 # What each project in the config can publish (see update_config).
 VISIBILITY_KINDS = ("allocations", "quotas", "jobs")
@@ -500,6 +500,13 @@ echo "@@SECTION myquota"
 command -v myquota >/dev/null 2>&1 && myquota 2>&1
 echo "@@SECTION myprojectquotas"
 command -v myprojectquotas >/dev/null 2>&1 && myprojectquotas 2>&1
+echo "@@SECTION environments"
+for f in "$HOME"/.alcf-dashboard/envs/*.json; do
+  [ -e "$f" ] || continue
+  echo "@@ENVFILE $f"
+  cat "$f"
+  echo
+done
 echo "@@END"
 """
 
@@ -633,8 +640,28 @@ def dedupe_quotas(rows):
     return out
 
 
+def parse_environments(text, machine):
+    """Parse the ``environments`` SSH section: one JSON object per ``@@ENVFILE``
+    chunk (a ~/.alcf-dashboard/envs/*.json file). Tags each with its machine and
+    ``source`` so :func:`merge_snapshots` can keep it when SSH is not refreshed."""
+    envs = []
+    for chunk in re.split(r"(?m)^@@ENVFILE .*$", text or ""):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        try:
+            obj = json.loads(chunk)
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            obj.setdefault("machine", machine)
+            obj["source"] = f"ssh:{machine}"
+            envs.append(obj)
+    return envs
+
+
 def collect_ssh(machine, host, ssh_command="ssh", timeout=120, run=subprocess.run):
-    """Run :data:`SSH_SCRIPT` on ``host`` and parse jobs and quotas."""
+    """Run :data:`SSH_SCRIPT` on ``host`` and parse jobs, quotas and environments."""
     cmd = shlex.split(ssh_command) + [
         "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", host, "bash", "-l", "-s",
     ]
@@ -647,7 +674,8 @@ def collect_ssh(machine, host, ssh_command="ssh", timeout=120, run=subprocess.ru
         msg = (proc.stderr or proc.stdout).strip().splitlines()
         raise RuntimeError(f"ssh {host} exited with {proc.returncode}: {msg[-1] if msg else ''}")
     sections = split_sections(proc.stdout)
-    out = {"user": (sections.get("whoami") or "").strip() or None, "jobs": [], "quotas": [], "errors": []}
+    out = {"user": (sections.get("whoami") or "").strip() or None,
+           "jobs": [], "quotas": [], "environments": [], "errors": []}
     try:
         out["jobs"] = parse_qstat_json(sections.get("jobs", ""), machine)
     except ValueError as exc:
@@ -655,6 +683,7 @@ def collect_ssh(machine, host, ssh_command="ssh", timeout=120, run=subprocess.ru
     quotas = parse_quota_table(sections.get("myquota", ""), machine)
     quotas += parse_quota_table(sections.get("myprojectquotas", ""), machine)
     out["quotas"] = dedupe_quotas(quotas)
+    out["environments"] = parse_environments(sections.get("environments", ""), machine)
     return out
 
 
@@ -873,7 +902,8 @@ def main(argv=None):
                 continue
             for error in data["errors"]:
                 print(f"  [ssh] {error}")
-            add_source(snap, name, {"jobs": data["jobs"], "quotas": data["quotas"]},
+            add_source(snap, name, {"jobs": data["jobs"], "quotas": data["quotas"],
+                                    "environments": data["environments"]},
                        data["errors"], not data["errors"])
             snap["user"] = snap["user"] or data["user"]
 

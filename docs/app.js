@@ -239,6 +239,7 @@
 
     renderSummary(data);
     renderSystems(data);
+    renderEnvironments(data);
     renderJobFilters(data);
     renderJobs();
     renderProjects(data);
@@ -313,6 +314,54 @@
         h("strong", { text: i.name || i.id }), " ", badge(i.status), " ",
         h("span", { "class": "muted", text: (i.type || "") + " · " + fmtTime(i.start) + " → " + (i.end ? fmtTime(i.end) : "ongoing") }),
         i.description ? h("div", { text: i.description }) : null));
+    });
+  }
+
+  // Auto-update result -> semantic badge (green ok / orange rolled-back / red failed).
+  function statusBadge(result) {
+    var cls = !result ? "unknown"
+      : /(_ok|^ok$|no[-_]change|promoted)/i.test(result) ? "ok"
+      : /(roll|revert|kept)/i.test(result) ? "warn" : "bad";
+    return h("span", { "class": "badge " + cls, text: result || "unknown" });
+  }
+
+  // "2254 passed, 32 skipped, 13 warnings in 527.91s (…)" -> "2254 passed, 32 skipped, 13 warnings"
+  function shortPytest(s) {
+    s = String(s || "").replace(/=+/g, "").trim();
+    var i = s.indexOf(" in ");
+    return i > 0 ? s.slice(0, i) : s;
+  }
+
+  function renderEnvironments(data) {
+    var envs = data.environments || [];
+    $("environments-section").hidden = !envs.length;
+    var el = clear($("environments"));
+    envs.forEach(function (e) {
+      var mk = machineKey(e.machine) || machineKey(e.name);
+      var versions = e.versions || {};
+      var order = ["torch", "numpy", "python", "chemgraph", "iqc", "mace-torch", "tblite", "pyscf"];
+      var seen = {};
+      var verParts = order.filter(function (k) { return versions[k]; })
+        .map(function (k) { seen[k] = 1; return k + " " + versions[k]; });
+      Object.keys(versions).forEach(function (k) { if (!seen[k]) verParts.push(k + " " + versions[k]); });
+      var git = e.git || {};
+      var gitParts = Object.keys(git).filter(function (k) { return git[k]; })
+        .map(function (k) { return k + " " + git[k]; });
+      var au = e.auto_update || {};
+      var pytest = [au.chemgraph_pytest ? "ChemGraph: " + shortPytest(au.chemgraph_pytest) : null,
+        au.iqc_pytest ? "IQC: " + shortPytest(au.iqc_pytest) : null].filter(Boolean).join(" · ");
+      var when = e.generated_at || au.time;
+      el.appendChild(h("div", { "class": "card env" + (mk ? " machine-" + mk : "") },
+        h("div", { "class": "label" },
+          h("span", { "class": "machine " + (mk || "other"), text: e.name || e.machine || "env" }),
+          au.result ? [" ", statusBadge(au.result)] : null),
+        e.path ? h("div", { "class": "detail path" }, h("code", { text: e.path })) : null,
+        e.backend ? h("div", { "class": "detail", text: "backend: " + e.backend }) : null,
+        verParts.length ? h("div", { "class": "detail vers", text: verParts.join(" · ") }) : null,
+        gitParts.length ? h("div", { "class": "detail", text: "git: " + gitParts.join(" · ") }) : null,
+        pytest ? h("div", { "class": "detail muted", text: pytest }) : null,
+        when ? h("div", { "class": "detail muted", text: "updated " + fmtAgo(when),
+          title: when }) : null));
     });
   }
 

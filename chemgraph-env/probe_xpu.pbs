@@ -1,0 +1,83 @@
+#!/bin/bash
+#PBS -N chemgraph_xpu_probe
+#PBS -A ChemGraph
+#PBS -q debug
+#PBS -l select=1
+#PBS -l walltime=00:40:00
+#PBS -l filesystems=home:flare
+#PBS -o /lus/flare/projects/catalyst/world_shared/chemgraph/test_results/probe_xpu.out
+#PBS -e /lus/flare/projects/catalyst/world_shared/chemgraph/test_results/probe_xpu.err
+# ---------------------------------------------------------------------------
+# Determine which pip torch-XPU wheel detects the Aurora PVC GPUs on a compute
+# node, and whether XPU detection needs any oneAPI/level-zero runtime beyond a
+# plain venv. Prints torch.xpu.is_available() + device_count() per candidate.
+# ---------------------------------------------------------------------------
+set -uo pipefail
+export http_proxy=http://proxy.alcf.anl.gov:3128
+export https_proxy=http://proxy.alcf.anl.gov:3128
+export OMP_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8 MKL_NUM_THREADS=8
+export ZE_FLAT_DEVICE_HIERARCHY=FLAT
+export PYTHONNOUSERSITE=1
+
+echo "=========================================================="
+echo "host: $(hostname)   date: $(date)"
+echo "=========================================================="
+
+MINIFORGE=/opt/aurora/26.26.0/spack/unified/1.1.1/install/linux-x86_64/miniforge3-25.11.0-1-khkcc6i
+SCRATCH=/tmp/chemgraph_xpu_probe.$$
+mkdir -p "$SCRATCH"
+
+# --- Baseline: the ALCF frameworks torch (known-good Aurora XPU build) --------
+echo; echo "### BASELINE: frameworks module torch ###"
+( module use /soft/modulefiles >/dev/null 2>&1
+  module load frameworks    >/dev/null 2>&1
+  python - <<'PY'
+import torch
+print("frameworks torch:", torch.__version__)
+print("  xpu.is_available:", torch.xpu.is_available())
+try: print("  xpu.device_count:", torch.xpu.device_count())
+except Exception as e: print("  device_count err:", repr(e)[:120])
+PY
+)
+
+# --- Candidate pip xpu wheels, tested in isolated venvs ----------------------
+source "$MINIFORGE/etc/profile.d/conda.sh"
+conda activate base            # gives us a python for `python -m venv`
+PYBASE=$(command -v python)
+echo; echo "venv base python: $PYBASE ($($PYBASE --version 2>&1))"
+
+test_version () {
+    local V="$1"
+    echo; echo "### CANDIDATE torch==$V (+xpu) ###"
+    local VENV="$SCRATCH/v$V"
+    "$PYBASE" -m venv "$VENV"
+    # shellcheck disable=SC1091
+    source "$VENV/bin/activate"
+    pip install -q --upgrade pip >/dev/null 2>&1
+    if ! pip install -q "torch==$V" --index-url https://download.pytorch.org/whl/xpu ; then
+        echo "  INSTALL FAILED for $V"; deactivate; return
+    fi
+    python - <<'PY'
+import torch
+print("  installed:", torch.__version__)
+print("  version.cuda:", torch.version.cuda)
+ok = torch.xpu.is_available()
+print("  xpu.is_available:", ok)
+try:
+    print("  xpu.device_count:", torch.xpu.device_count())
+    if ok:
+        x = torch.ones(8, device="xpu"); print("  xpu tensor sum:", float(x.sum()))
+except Exception as e:
+    print("  xpu err:", repr(e)[:160])
+PY
+    deactivate
+    # keep venvs small: remove after test
+    rm -rf "$VENV"
+}
+
+for V in 2.8.0 2.9.1 2.12.1; do
+    test_version "$V"
+done
+
+rm -rf "$SCRATCH"
+echo; echo "=== PROBE DONE $(date) ==="
