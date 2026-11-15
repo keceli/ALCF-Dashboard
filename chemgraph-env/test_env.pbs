@@ -1,0 +1,89 @@
+#!/bin/bash
+#PBS -N chemgraph_verify
+#PBS -A ChemGraph
+#PBS -q debug
+#PBS -l select=1
+#PBS -l walltime=01:00:00
+#PBS -l filesystems=home:flare
+#PBS -o /lus/flare/projects/catalyst/world_shared/chemgraph/test_results/test_env.out
+#PBS -e /lus/flare/projects/catalyst/world_shared/chemgraph/test_results/test_env.err
+# ===========================================================================
+# Verify the shared ChemGraph env on an Aurora COMPUTE node (PVC visible).
+# Writes a summary to test_results/ and full pytest logs alongside.
+# ===========================================================================
+# no `set -u`: conda Intel-MPI activate hooks reference unbound vars under nounset.
+set -o pipefail
+SHARED=/lus/flare/projects/catalyst/world_shared/chemgraph
+RES=$SHARED/test_results
+mkdir -p "$RES"
+
+source "$SHARED/activate_chemgraph.sh"
+export OMP_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8 MKL_NUM_THREADS=8 PYTHONNOUSERSITE=1
+
+echo "=========================================================="
+echo "host: $(hostname)   date: $(date)"
+echo "python: $(command -v python)  $(python --version 2>&1)"
+echo "=========================================================="
+
+# ---- 1. imports + XPU device + physics sanity -----------------------------
+echo; echo "### 1. imports / device / calculators ###"
+python - <<'PY'
+import importlib, torch
+mods = ["numpy","ase","rdkit","pymatgen","mace","tblite.ase","pyscf","chemgraph","iqc","mpi4py"]
+for m in mods:
+    try: importlib.import_module(m); print("OK  ", m)
+    except Exception as e: print("FAIL", m, "->", repr(e)[:120])
+
+import numpy as np
+print("numpy version:", np.__version__)
+dev = ("cuda" if torch.cuda.is_available()
+       else "xpu" if getattr(torch,"xpu",None) and torch.xpu.is_available()
+       else "cpu")
+print("torch", torch.__version__, "| cuda:", torch.version.cuda, "| device:", dev)
+if dev == "xpu":
+    print("xpu device_count:", torch.xpu.device_count())
+    x = torch.ones(1024, device="xpu"); print("xpu tensor sum:", float(x.sum()))
+
+# tblite GFN2-xTB on H2O  (~ -137.97 eV)
+from ase.build import molecule
+from tblite.ase import TBLite
+a = molecule("H2O"); a.calc = TBLite(method="GFN2-xTB", verbosity=0)
+print("tblite H2O GFN2-xTB (eV):", round(a.get_potential_energy(), 4))
+
+# pyscf RHF/STO-3G on H2O  (~ -74.96 Ha)
+from pyscf import gto, scf
+mol = gto.M(atom="O 0 0 0; H 0 0 0.958; H 0 0.926 -0.24", basis="sto-3g", verbose=0)
+print("pyscf RHF/STO-3G H2O (Ha):", round(scf.RHF(mol).kernel(), 4))
+PY
+
+# ---- 2. nwchem serial SCF on H2O ------------------------------------------
+echo; echo "### 2. nwchem serial SCF (H2O) ###"
+NWD=$(mktemp -d)
+cat > "$NWD/h2o.nw" <<'NW'
+title "h2o scf"
+geometry units angstroms
+ O 0.000 0.000 0.000
+ H 0.000 0.000 0.958
+ H 0.000 0.926 -0.240
+end
+basis
+ * library sto-3g
+end
+task scf energy
+NW
+( cd "$NWD"
+  if nwchem h2o.nw > h2o.out 2>&1 || mpirun -np 1 nwchem h2o.nw > h2o.out 2>&1; then
+      grep -E "Total SCF energy" h2o.out | tail -1 || echo "nwchem: no SCF energy line (see below)"
+  else
+      echo "nwchem run failed"; tail -5 h2o.out
+  fi )
+rm -rf "$NWD"
+
+# ---- 3. pytest suites (timeout-guarded so a hung test can't eat the hour) --
+echo; echo "### 3. ChemGraph pytest ###"
+( cd "$SHARED/src/ChemGraph" && timeout 1800 python -m pytest -q -p no:cacheprovider 2>&1 | tee "$RES/pytest_chemgraph.txt" | tail -8 ) || echo "chemgraph pytest exited non-zero/timeout"
+
+echo; echo "### 4. IQC pytest ###"
+( cd "$SHARED/src/IQC" && timeout 900 python -m pytest -q -p no:cacheprovider 2>&1 | tee "$RES/pytest_iqc.txt" | tail -8 ) || echo "iqc pytest exited non-zero/timeout"
+
+echo; echo "=== VERIFY DONE $(date) ==="

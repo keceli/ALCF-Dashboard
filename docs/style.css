@@ -122,6 +122,12 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .muted { color: var(--muted); }
 
+/* Environments: wider cards; version lists and long paths need to wrap. */
+#environments.cards { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.card.env .detail { margin-top: .3rem; white-space: normal; }
+.card.env .vers { font-variant-numeric: tabular-nums; }
+.card.env .path code { word-break: break-all; font-size: .8rem; }
+
 .machine { white-space: nowrap; }
 .machine::before {
   content: "";
