@@ -310,7 +310,8 @@ IRI_ROUTES = {
     ],
     # ALCF answers an empty listing with a 404 problem.
     ("POST", "/compute/status/r-polaris"): Problem(404, "No jobs found"),
-    ("POST", "/compute/status/r-sophia"): Problem(404, "No jobs found"),
+    ("POST", "/compute/status/r-sophia"): Problem(
+        404, "Endpoint resource Sophia does not exist for API component compute."),
     ("GET", "/account/capabilities"): [{"id": "cap-aurora", "name": "Aurora nodes"}],
     ("GET", "/account/projects"): [{"id": "MyProject", "name": "MyProject", "description": "AI"}],
     ("GET", "/account/projects/MyProject/project_allocations"): [
@@ -364,7 +365,7 @@ class IRITests(unittest.TestCase):
         self.assertEqual([r["name"] for r in status["resources"]], ["Aurora", "Polaris", "Sophia", "Eagle"])
         self.assertEqual(status["resources"][0]["type"], "compute")
         self.assertEqual([i["id"] for i in status["incidents"]], ["i1"])
-        # Polaris and Sophia have no jobs (404 "No jobs found").
+        # Polaris has no jobs (404 "No jobs found") and Sophia no compute endpoint.
         self.assertEqual(len(jobs["jobs"]), 1)
         job = jobs["jobs"][0]
         self.assertEqual((job["machine"], job["id"], job["state"], job["queue"], job["project"], job["source"]),

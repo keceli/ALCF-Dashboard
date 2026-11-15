@@ -261,8 +261,10 @@ class IRIClient:
                     self.rate_limited += 1
                     self._sleep(_retry_after(exc.headers, 2 ** attempt))
                     continue
-                # ALCF answers an empty collection with 404 {"detail": "No incidents found"}.
-                if exc.code == 404 and re.match(r"No .* found", detail):
+                # ALCF answers an empty collection with 404 {"detail": "No incidents found"},
+                # and a resource without that API component (Sophia has no compute
+                # endpoint) with 404 "Endpoint resource ... does not exist ...".
+                if exc.code == 404 and re.match(r"No .* found|Endpoint resource .* does not exist", detail):
                     return []
                 raise IRIError(f"{method} {path}: HTTP {exc.code} {(detail or text)[:200]}".strip()) from None
             except (urllib.error.URLError, OSError) as exc:
