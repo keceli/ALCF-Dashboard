@@ -33,8 +33,9 @@ collector reaches over SSH can publish one or more environments by writing a sma
 into `~/.alcf-dashboard/envs/` on that host; the file is rendered verbatim. A file's
 `machine` field says which machine it describes, so Polaris, Sophia and Crux, which share
 `/home`, can each publish their own and each is listed once. See
-[`chemgraph-env/`](chemgraph-env/) for a worked example (shared ChemGraph envs on Aurora,
-Polaris, Sophia and Crux that refresh their status on every auto-update check).
+[`auto/`](https://github.com/Autonomous-Scientific-Agents/chemgraph-env/tree/main/auto) in
+chemgraph-env for a worked example: shared ChemGraph environments on Aurora, Polaris, Sophia
+and Crux, released and tested automatically, that report their status on every check.
 
 Every source is optional and failures are isolated: when a source fails (an
 expired token, an SSH host without an open connection, ...) the dashboard keeps

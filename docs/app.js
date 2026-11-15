@@ -322,10 +322,12 @@
     });
   }
 
-  // Auto-update result -> semantic badge (green ok / orange rolled-back / red failed).
+  // Auto-update result -> semantic badge (green ok / grey in progress /
+  // orange rolled back or kept the previous release / red failed).
   function statusBadge(result) {
     var cls = !result ? "unknown"
       : /(_ok|^ok$|no[-_]change|promoted)/i.test(result) ? "ok"
+      : /^(building|verifying)$/i.test(result) ? "unknown"
       : /(roll|revert|kept)/i.test(result) ? "warn" : "bad";
     return h("span", { "class": "badge " + cls, text: result || "unknown" });
   }
@@ -368,6 +370,8 @@
         verParts.length ? h("div", { "class": "detail vers", text: verParts.join(" · ") }) : null,
         gitParts.length ? h("div", { "class": "detail", text: "git: " + gitParts.join(" · ") }) : null,
         pytest ? h("div", { "class": "detail muted", text: pytest }) : null,
+        au.pending ? h("div", { "class": "detail", text: "next release " + au.pending.release + ": " +
+          au.pending.state + (au.pending.reason ? " (" + au.pending.reason + ")" : "") }) : null,
         when ? h("div", { "class": "detail muted", text: "updated " + fmtAgo(when),
           title: when }) : null));
     });
