@@ -1,0 +1,915 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-11-16T06:59:19+00:00",
+ "user": "keceli",
+ "sources": {
+  "ssh:aurora": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-11-16T06:59:31+00:00",
+   "last_success": "2026-11-16T06:59:31+00:00"
+  },
+  "ssh:polaris": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-11-16T06:59:39+00:00",
+   "last_success": "2026-11-16T06:59:39+00:00"
+  },
+  "ssh:crux": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-11-16T06:59:50+00:00",
+   "last_success": "2026-11-16T06:59:50+00:00"
+  },
+  "iri:status": {
+   "url": "https://api.alcf.anl.gov/api/v2",
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-11-16T07:05:09+00:00",
+   "last_success": "2026-11-16T07:05:09+00:00"
+  },
+  "iri:account": {
+   "url": "https://api.alcf.anl.gov/api/v2",
+   "ok": false,
+   "errors": [
+    "projects/d30e3617-6101-38cb-bd25-63c614279f47/project_allocations: GET /account/projects/d30e3617-6101-38cb-bd25-63c614279f47/project_allocations: The read operation timed out"
+   ],
+   "collected_at": "2026-11-16T07:05:09+00:00",
+   "last_success": "2026-11-15T19:28:36+00:00"
+  },
+  "iri:jobs": {
+   "url": "https://api.alcf.anl.gov/api/v2",
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-11-16T07:05:09+00:00",
+   "last_success": "2026-11-16T07:05:09+00:00"
+  },
+  "ssh:sophia": {
+   "ok": true,
+   "errors": [],
+   "collected_at": "2026-11-16T06:59:43+00:00",
+   "last_success": "2026-11-16T06:59:43+00:00"
+  }
+ },
+ "resources": [
+  {
+   "id": "2fef6c82-a982-491e-91a3-d75b59b707af",
+   "name": "Sirius",
+   "description": "Sirius is an ALCF staging cluster.",
+   "status": "unknown",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "6115bd2c-957a-4543-abff-5fae52992ff2",
+   "name": "Home",
+   "description": "Home is a Lustre filesystem for small files.",
+   "status": "unknown",
+   "type": "storage",
+   "group": "storages",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "72bbd8c7-b511-4dc3-84b5-c4fddc297504",
+   "name": "Inference Service",
+   "description": "The ALCF Inference Service provides API access to a variety of state-of-the-art open-source models running on dedicated ALCF hardware. Documentation: https://docs.alcf.anl.gov/services/inference-endpoints/",
+   "status": "up",
+   "type": "generic",
+   "group": "services",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "9674c7e1-aecc-4dbb-bf01-c9197e027cd6",
+   "name": "Sophia",
+   "description": "Sophia is an AMD+NVIDIA GPU-based system with 24 nodes and 8 A100 GPUs per node.",
+   "status": "up",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "8b9b42f7-572a-4909-8472-a0453436304c",
+   "name": "Crux",
+   "description": "Crux is an AMD CPU-only system with 256 nodes.",
+   "status": "up",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "0325fc07-6fb7-4453-b772-3d5030b2df72",
+   "name": "Aurora",
+   "description": "Aurora is an HPE Cray-Ex based system with 10,624 nodes and 6 Intel Data Center GPU Max Series per node.",
+   "status": "up",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "7f7d0593-162e-43b9-8476-07d7d137d6ab",
+   "name": "Edith",
+   "description": "Edit is an ALCF development cluster with 4 nodes",
+   "status": "unknown",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "154bb3be-5d12-4a76-a16b-898b8e310a4b",
+   "name": "Flare",
+   "description": "Flare is a 91 PB Lustre Filesystem with 160 OSTs, 40 MDTs, and 48 Gateway nodes mounted at /lus/flare/projects/ with a peak theoretical performance of 650 GB/s.",
+   "status": "unknown",
+   "type": "storage",
+   "group": "storages",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "55c1c993-1124-47f9-b823-514ba3849a9a",
+   "name": "Polaris",
+   "description": "Polaris is an AMD+NVIDIA GPU-based system with 560 nodes and 4 A100 GPUs per node.",
+   "status": "up",
+   "type": "compute",
+   "group": "computes",
+   "endpoints": [],
+   "source": "iri:status"
+  },
+  {
+   "id": "1c3ad9d4-2e91-42bc-becb-72b1fde1235c",
+   "name": "Eagle",
+   "description": "Eagle is a Lustre filesystem for intensive job output, large files, and community sharing via Globus.",
+   "status": "unknown",
+   "type": "storage",
+   "group": "storages",
+   "endpoints": [],
+   "source": "iri:status"
+  }
+ ],
+ "incidents": [],
+ "jobs": [
+  {
+   "machine": "aurora",
+   "id": "9091721",
+   "name": "WS2_TBL_conc",
+   "state": "queued",
+   "message": "Not Running: Insufficient amount of resource: at_queue ",
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": 14,
+   "walltime_s": 21600,
+   "used_walltime_s": null,
+   "submitted": "2026-11-15T11:55:19+00:00",
+   "started": null,
+   "estimated_start": null,
+   "updated": "2026-11-16T06:50:38+00:00",
+   "exit_code": null,
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "id": "9093027",
+   "name": "WSe2_TBL_conc",
+   "state": "active",
+   "message": "Job run at Mon Nov 16 at 05:57",
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": 2,
+   "walltime_s": 21000,
+   "used_walltime_s": 3614,
+   "submitted": "2026-11-15T21:35:12+00:00",
+   "started": "2026-11-16T05:57:53+00:00",
+   "estimated_start": null,
+   "updated": "2026-11-16T06:58:38+00:00",
+   "exit_code": null,
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "id": "9094279",
+   "name": "WSe2_TBL_conc",
+   "state": "held",
+   "message": null,
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": 2,
+   "walltime_s": 21000,
+   "used_walltime_s": null,
+   "submitted": "2026-11-16T05:58:25+00:00",
+   "started": null,
+   "estimated_start": null,
+   "updated": "2026-11-16T05:58:25+00:00",
+   "exit_code": null,
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "id": "9091721",
+   "name": null,
+   "state": "queued",
+   "message": null,
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": null,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": 0,
+   "source": "iri:jobs"
+  },
+  {
+   "machine": "aurora",
+   "id": "9093027",
+   "name": null,
+   "state": "active",
+   "message": null,
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": null,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": 0,
+   "source": "iri:jobs"
+  },
+  {
+   "machine": "aurora",
+   "id": "9094279",
+   "name": null,
+   "state": "held",
+   "message": null,
+   "queue": "capacity",
+   "project": "MLP4THERMO",
+   "nodes": null,
+   "walltime_s": null,
+   "used_walltime_s": null,
+   "submitted": null,
+   "started": null,
+   "estimated_start": null,
+   "updated": null,
+   "exit_code": 0,
+   "source": "iri:jobs"
+  }
+ ],
+ "projects": [
+  {
+   "id": "1b080f7d-c9e3-370d-9eca-7ca04cca92f8",
+   "name": "MLP4THERMO",
+   "description": "N/A",
+   "allocations": [
+    {
+     "id": "17285",
+     "capability": "aurora",
+     "unit": "node_hours",
+     "allocation": 35000.0,
+     "usage": 8554.391944444444,
+     "user_allocation": 35000.0,
+     "user_usage": 8554.391944444444
+    },
+    {
+     "id": "17286",
+     "capability": "crux",
+     "unit": "node_hours",
+     "allocation": 5000.0,
+     "usage": 0.0,
+     "user_allocation": 5000.0,
+     "user_usage": 0.0
+    },
+    {
+     "id": "17287",
+     "capability": "polaris",
+     "unit": "node_hours",
+     "allocation": 5000.0,
+     "usage": 2373.5730555555556,
+     "user_allocation": 5000.0,
+     "user_usage": 2373.5730555555556
+    }
+   ],
+   "source": "iri:account"
+  },
+  {
+   "id": "a8f58f90-7f38-3192-8bc4-514f9630faa8",
+   "name": "IQC",
+   "description": "N/A",
+   "allocations": [
+    {
+     "id": "17009",
+     "capability": "aurora",
+     "unit": "node_hours",
+     "allocation": 40000.0,
+     "usage": 0.009166666663077194,
+     "user_allocation": 40000.0,
+     "user_usage": 0.009166666663077194
+    },
+    {
+     "id": "17010",
+     "capability": "crux",
+     "unit": "node_hours",
+     "allocation": 20000.0,
+     "usage": 15368.23,
+     "user_allocation": 20000.0,
+     "user_usage": 15368.23
+    },
+    {
+     "id": "17011",
+     "capability": "polaris",
+     "unit": "node_hours",
+     "allocation": 5000.0,
+     "usage": 6230.008055555556,
+     "user_allocation": 5000.0,
+     "user_usage": 6230.008055555556
+    }
+   ],
+   "source": "iri:account"
+  },
+  {
+   "id": "79d81c4e-c5f6-3ba1-85e8-07a557a61908",
+   "name": "HiFiThermKin",
+   "description": "N/A",
+   "allocations": [
+    {
+     "id": "15490",
+     "capability": "aurora",
+     "unit": "node_hours",
+     "allocation": 1200000.0,
+     "usage": 880138.0844444444,
+     "user_allocation": 1200000.0,
+     "user_usage": 880138.0844444444
+    }
+   ],
+   "source": "iri:account"
+  },
+  {
+   "id": "b036a87b-48b6-3b8e-b6ad-8f7bb1092287",
+   "name": "ChemGraph",
+   "description": "N/A",
+   "allocations": [
+    {
+     "id": "17185",
+     "capability": "sophia",
+     "unit": "node_hours",
+     "allocation": 1000.0,
+     "usage": 0.0736805555555975,
+     "user_allocation": 1000.0,
+     "user_usage": 0.0736805555555975
+    },
+    {
+     "id": "17484",
+     "capability": "aurora",
+     "unit": "node_hours",
+     "allocation": 30000.0,
+     "usage": 27.94611111111226,
+     "user_allocation": 30000.0,
+     "user_usage": 27.94611111111226
+    },
+    {
+     "id": "17485",
+     "capability": "polaris",
+     "unit": "node_hours",
+     "allocation": 5000.0,
+     "usage": 1167.634722222222,
+     "user_allocation": 5000.0,
+     "user_usage": 1167.634722222222
+    }
+   ],
+   "source": "iri:account"
+  }
+ ],
+ "quotas": [
+  {
+   "machine": "aurora",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/flare",
+   "pool": null,
+   "used": "38.49G",
+   "quota": "1T",
+   "used_bytes": 41328322806,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/flare",
+   "pool": null,
+   "used": "1.231T",
+   "quota": "10T",
+   "used_bytes": 1353498813792,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "scope": "project",
+   "name": "HiFiThermKin",
+   "type": "Project",
+   "filesystem": "/lus/flare",
+   "pool": null,
+   "used": "5.227T*",
+   "quota": "5T",
+   "used_bytes": 5747147278385,
+   "quota_bytes": 5497558138880,
+   "grace": "3d10h42m26s",
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "scope": "project",
+   "name": "ChemGraph",
+   "type": "Project",
+   "filesystem": "/lus/flare",
+   "pool": null,
+   "used": "462.9G",
+   "quota": "1T",
+   "used_bytes": 497035090330,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "aurora",
+   "scope": "user",
+   "name": "keceli",
+   "type": "User",
+   "filesystem": "/home",
+   "pool": null,
+   "used": "127.4G",
+   "quota": "268.7G",
+   "used_bytes": 136794708378,
+   "quota_bytes": 288514428109,
+   "grace": "-",
+   "source": "ssh:aurora"
+  },
+  {
+   "machine": "polaris",
+   "scope": "user",
+   "name": "keceli",
+   "type": "User",
+   "filesystem": "/home",
+   "pool": null,
+   "used": "38.64G",
+   "quota": "50G",
+   "used_bytes": 41489384079,
+   "quota_bytes": 53687091200,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/grand",
+   "pool": null,
+   "used": "50.9M",
+   "quota": "1T",
+   "used_bytes": 53372518,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/grand",
+   "pool": null,
+   "used": "3.93T",
+   "quota": "10T",
+   "used_bytes": 4321080697160,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "50.9M",
+   "quota": "1T",
+   "used_bytes": 53372518,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "3.93T",
+   "quota": "10T",
+   "used_bytes": 4321080697160,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "HiFiThermKin",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "56k",
+   "quota": "1M",
+   "used_bytes": 57344,
+   "quota_bytes": 1048576,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "polaris",
+   "scope": "project",
+   "name": "ChemGraph",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "891.9G",
+   "quota": "1T",
+   "used_bytes": 957670332826,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:polaris"
+  },
+  {
+   "machine": "sophia",
+   "scope": "user",
+   "name": "keceli",
+   "type": "User",
+   "filesystem": "/home",
+   "pool": null,
+   "used": "38.64G",
+   "quota": "50G",
+   "used_bytes": 41489384079,
+   "quota_bytes": 53687091200,
+   "grace": "-",
+   "source": "ssh:sophia"
+  },
+  {
+   "machine": "sophia",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "50.9M",
+   "quota": "1T",
+   "used_bytes": 53372518,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:sophia"
+  },
+  {
+   "machine": "sophia",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "3.93T",
+   "quota": "10T",
+   "used_bytes": 4321080697160,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:sophia"
+  },
+  {
+   "machine": "sophia",
+   "scope": "project",
+   "name": "HiFiThermKin",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "56k",
+   "quota": "1M",
+   "used_bytes": 57344,
+   "quota_bytes": 1048576,
+   "grace": "-",
+   "source": "ssh:sophia"
+  },
+  {
+   "machine": "sophia",
+   "scope": "project",
+   "name": "ChemGraph",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "891.9G",
+   "quota": "1T",
+   "used_bytes": 957670332826,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:sophia"
+  },
+  {
+   "machine": "sophia",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/grand",
+   "pool": null,
+   "used": "50.9M",
+   "quota": "1T",
+   "used_bytes": 53372518,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:sophia"
+  },
+  {
+   "machine": "sophia",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/grand",
+   "pool": null,
+   "used": "3.93T",
+   "quota": "10T",
+   "used_bytes": 4321080697160,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:sophia"
+  },
+  {
+   "machine": "crux",
+   "scope": "user",
+   "name": "keceli",
+   "type": "User",
+   "filesystem": "/home",
+   "pool": null,
+   "used": "38.64G",
+   "quota": "50G",
+   "used_bytes": 41489384079,
+   "quota_bytes": 53687091200,
+   "grace": "-",
+   "source": "ssh:crux"
+  },
+  {
+   "machine": "crux",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/grand",
+   "pool": null,
+   "used": "50.9M",
+   "quota": "1T",
+   "used_bytes": 53372518,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:crux"
+  },
+  {
+   "machine": "crux",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/grand",
+   "pool": null,
+   "used": "3.93T",
+   "quota": "10T",
+   "used_bytes": 4321080697160,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:crux"
+  },
+  {
+   "machine": "crux",
+   "scope": "project",
+   "name": "MLP4THERMO",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "50.9M",
+   "quota": "1T",
+   "used_bytes": 53372518,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:crux"
+  },
+  {
+   "machine": "crux",
+   "scope": "project",
+   "name": "IQC",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "3.93T",
+   "quota": "10T",
+   "used_bytes": 4321080697160,
+   "quota_bytes": 10995116277760,
+   "grace": "-",
+   "source": "ssh:crux"
+  },
+  {
+   "machine": "crux",
+   "scope": "project",
+   "name": "HiFiThermKin",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "56k",
+   "quota": "1M",
+   "used_bytes": 57344,
+   "quota_bytes": 1048576,
+   "grace": "-",
+   "source": "ssh:crux"
+  },
+  {
+   "machine": "crux",
+   "scope": "project",
+   "name": "ChemGraph",
+   "type": "Project",
+   "filesystem": "/lus/eagle",
+   "pool": null,
+   "used": "891.9G",
+   "quota": "1T",
+   "used_bytes": 957670332826,
+   "quota_bytes": 1099511627776,
+   "grace": "-",
+   "source": "ssh:crux"
+  }
+ ],
+ "environments": [
+  {
+   "name": "aurora_chemgraph_env",
+   "machine": "aurora",
+   "path": "/lus/flare/projects/catalyst/world_shared/chemgraph/aurora_chemgraph_env",
+   "activate": "source /lus/flare/projects/catalyst/world_shared/chemgraph/aurora_chemgraph_env/activate.sh",
+   "backend": "Intel XPU (PVC)",
+   "manager": "uv",
+   "release": "20261116T0017-cgb2f37dfb3-iqc26eb658ba-inbbdab0",
+   "versions": {
+    "python": "3.11.14",
+    "torch": "2.13.0+xpu",
+    "numpy": "2.2.6",
+    "chemgraph": "0.7.0",
+    "iqc": "0.1.0",
+    "mace-torch": "0.3.17",
+    "tblite": "0.4.0",
+    "pyscf": "2.15.0",
+    "ase": "3.29.0",
+    "rdkit": "2026.9.2",
+    "pymatgen": "2026.10.24",
+    "parsl": "2026.11.9",
+    "ensemble-launcher": "0.1.0",
+    "mpi4py": "4.1.2"
+   },
+   "git": {
+    "ChemGraph": "b2f37dfb3",
+    "IQC": "26eb658ba"
+   },
+   "auto_update": {
+    "result": "updated_ok",
+    "release": "20261116T0017-cgb2f37dfb3-iqc26eb658ba-inbbdab0",
+    "time": "2026-11-16 00:42:42 CST",
+    "chemgraph_pytest": "2269 passed, 32 skipped, 13 warnings in 394.94s (0:06:34)",
+    "iqc_pytest": "487 passed, 28 skipped, 49 warnings in 39.76s",
+    "last_check": "2026-11-16 00:17:04 CST"
+   },
+   "generated_at": "2026-11-16T06:59:11+00:00",
+   "source": "ssh:aurora"
+  },
+  {
+   "name": "crux_chemgraph_env",
+   "machine": "crux",
+   "path": "/grand/catalyst/world-shared/chemgraph/crux_chemgraph_env",
+   "activate": "source /grand/catalyst/world-shared/chemgraph/crux_chemgraph_env/activate.sh",
+   "backend": "CPU",
+   "manager": "uv",
+   "release": "20261116T0017-cgb2f37dfb3-iqc26eb658ba-inbbdab0",
+   "versions": {
+    "python": "3.11.14",
+    "torch": "2.13.0+cpu",
+    "numpy": "2.2.6",
+    "chemgraph": "0.7.0",
+    "iqc": "0.1.0",
+    "mace-torch": "0.3.17",
+    "tblite": "0.4.0",
+    "pyscf": "2.15.0",
+    "ase": "3.29.0",
+    "rdkit": "2026.9.2",
+    "pymatgen": "2026.10.24",
+    "parsl": "2026.11.9",
+    "ensemble-launcher": "0.1.0",
+    "mpi4py": "4.1.2"
+   },
+   "git": {
+    "ChemGraph": "b2f37dfb3",
+    "IQC": "26eb658ba"
+   },
+   "auto_update": {
+    "result": "updated_ok",
+    "release": "20261116T0017-cgb2f37dfb3-iqc26eb658ba-inbbdab0",
+    "time": "2026-11-16 00:29:04 CST",
+    "chemgraph_pytest": "2268 passed, 32 skipped, 1 deselected, 13 warnings in 351.79s (0:05:51)",
+    "iqc_pytest": "487 passed, 28 skipped, 49 warnings in 40.60s",
+    "last_check": "2026-11-16 00:17:11 CST"
+   },
+   "generated_at": "2026-11-16T06:31:59+00:00",
+   "source": "ssh:polaris"
+  },
+  {
+   "name": "polaris_chemgraph_env",
+   "machine": "polaris",
+   "path": "/grand/catalyst/world-shared/chemgraph/polaris_chemgraph_env",
+   "activate": "source /grand/catalyst/world-shared/chemgraph/polaris_chemgraph_env/activate.sh",
+   "backend": "CUDA (NVIDIA A100)",
+   "manager": "uv",
+   "release": "20261116T0017-cgb2f37dfb3-iqc26eb658ba-inbbdab0",
+   "versions": {
+    "python": "3.11.14",
+    "torch": "2.13.0+cu126",
+    "numpy": "2.2.6",
+    "chemgraph": "0.7.0",
+    "iqc": "0.1.0",
+    "mace-torch": "0.3.17",
+    "tblite": "0.4.0",
+    "pyscf": "2.15.0",
+    "ase": "3.29.0",
+    "rdkit": "2026.9.2",
+    "pymatgen": "2026.10.24",
+    "parsl": "2026.11.9",
+    "ensemble-launcher": "0.1.0",
+    "mpi4py": "4.1.2"
+   },
+   "git": {
+    "ChemGraph": "b2f37dfb3",
+    "IQC": "26eb658ba"
+   },
+   "auto_update": {
+    "result": "updated_ok",
+    "release": "20261116T0017-cgb2f37dfb3-iqc26eb658ba-inbbdab0",
+    "time": "2026-11-16 00:27:43 CST",
+    "chemgraph_pytest": "2268 passed, 32 skipped, 1 deselected, 13 warnings in 235.49s (0:03:55)",
+    "iqc_pytest": "487 passed, 28 skipped, 49 warnings in 31.62s",
+    "last_check": "2026-11-16 00:17:16 CST"
+   },
+   "generated_at": "2026-11-16T06:28:29+00:00",
+   "source": "ssh:polaris"
+  },
+  {
+   "name": "sophia_chemgraph_env",
+   "machine": "sophia",
+   "path": "/grand/catalyst/world-shared/chemgraph/sophia_chemgraph_env",
+   "activate": "source /grand/catalyst/world-shared/chemgraph/sophia_chemgraph_env/activate.sh",
+   "backend": "CUDA (NVIDIA A100)",
+   "manager": "uv",
+   "release": "20261116T0017-cgb2f37dfb3-iqc26eb658ba-inbbdab0",
+   "versions": {
+    "python": "3.11.14",
+    "torch": "2.13.0+cu126",
+    "numpy": "2.2.6",
+    "chemgraph": "0.7.0",
+    "iqc": "0.1.0",
+    "mace-torch": "0.3.17",
+    "tblite": "0.4.0",
+    "pyscf": "2.15.0",
+    "ase": "3.29.0",
+    "rdkit": "2026.9.2",
+    "pymatgen": "2026.10.24",
+    "parsl": "2026.11.9",
+    "ensemble-launcher": "0.1.0",
+    "mpi4py": "4.1.2"
+   },
+   "git": {
+    "ChemGraph": "b2f37dfb3",
+    "IQC": "26eb658ba"
+   },
+   "auto_update": {
+    "result": "updated_ok",
+    "release": "20261116T0017-cgb2f37dfb3-iqc26eb658ba-inbbdab0",
+    "time": "2026-11-16 00:26:55 CST",
+    "chemgraph_pytest": "2268 passed, 32 skipped, 1 deselected, 13 warnings in 231.03s (0:03:51)",
+    "iqc_pytest": "487 passed, 28 skipped, 49 warnings in 31.56s",
+    "last_check": "2026-11-16 00:17:30 CST"
+   },
+   "generated_at": "2026-11-16T06:27:29+00:00",
+   "source": "ssh:polaris"
+  }
+ ]
+}
